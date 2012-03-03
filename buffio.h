@@ -35,4 +35,4 @@ void     f_open  (buffered_file *f, const char *c, int m);
 void     f_close (buffered_file *f);
 char*    f_gets  (buffered_file *f, char *c, int64_t maxsz);
 
-#endif
+#endif // BUFFIO_H

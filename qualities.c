@@ -37,7 +37,7 @@ void quality_mapping_init (quality_mapping *q, buffered_file *f, int *read_lengt
 		int l = strlen (line);
 		for (int j = 0; j < l; j++)
 			stat[line[j]]++;
-		(*read_length) = strlen (line);
+		(*read_length) = l;
 
 		if (_interleave == 10) { /* skip second part in interleaved */
 			f_gets (f, line, MAXLINE);
@@ -118,12 +118,14 @@ void quality_mapping_init (quality_mapping *q, buffered_file *f, int *read_lengt
 
 /* encode quality using lossy table and gap closing */
 int output_quality (char* line, char *read, quality_mapping *q, uint8_t *dest) {
-	int l = strlen (line);
+	int l = 0;
 
 	int bc = 0;
 	// Lossy compression
-	for (int i = 0; i < l; i++)
-		line[i] = (read[i] == 'N' ? ' ' : q->values[line[i]]);
+	while (line[l]) {
+		line[l] = (read[l] == 'N' ? ' ' : q->values[line[l]]);
+		l++;
+	}
 
 	// Gap closing
 	for (int i = 0; i < l; i++) {

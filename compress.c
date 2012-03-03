@@ -9,6 +9,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <omp.h>
+
 #include "const.h"
 #include "buffio.h"
 #include "compress.h"
@@ -28,14 +30,14 @@ int merhamet_merge (int *fl, int flc, int idx) {
 
 	char buffer[MAXLINE];
 
-	LOG ("Merging part %d for files + ", idx);
+	DLOG ("Merging part %d for files + ", idx);
 	for (int i = 0; i < flc; i++) {
 		struct stat S;
 		snprintf (buffer, MAXLINE, "%s/t_%03d_%d.tmp", _temp_directory, fl[i], idx);
 		stat (buffer, &S);
-		LOG ("%02d (%7.1lfM)%s", fl[i], (S.st_size/1024.0)/1024.0, (i==flc-1?"":", "));
+		DLOG ("%02d (%7.1lfM)%s", fl[i], (S.st_size/1024.0)/1024.0, (i==flc-1?"":", "));
 	}
-	LOG (" ... ");
+	DLOG (" ... ");
 
 	snprintf (buffer, MAXLINE, "%s/t_TMP_%d.tmp", _temp_directory, idx);
 	f_open (file_pool + 0, buffer, IO_WRITE);
@@ -102,7 +104,7 @@ int merhamet_merge (int *fl, int flc, int idx) {
 		unlink (buffer);
 	}
 
-	LOG("OK\n");
+	DLOG("OK\n");
 	return metadata_pos;
 }
 
@@ -140,10 +142,11 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	 */
 
 	buffered_file foQ, foR, foN;
+
 	f_init (&foQ, _compression_mode);
 	f_init (&foR, _compression_mode);
 	f_init (&foN, _compression_mode);
-	LOG ("compression: %s\n", _compression_mode==IO_SYS?"no compression":(_compression_mode==IO_GZIP?"gzip":"bzip"));
+	LOG ("compression: %s\n", _compression_mode==IO_SYS?"no compression":(_compression_mode==IO_PGZIP?"pigz":(_compression_mode==IO_PGZIP?"pigz":"bzip")));
 
 	int64_t new_size = 0;
 
@@ -234,7 +237,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 			f_close (&foR);
 			f_close (&foN);
 			f_close (&foQ);
-			LOG("\tCreated part %d (paired-end %d) with %lld reads, files (%s, %s, %s)\n", F, NP, reads_written, foN.file_name, foQ.file_name, foR.file_name);
+			DLOG("\tCreated part %d (paired-end %d) with %lld reads, files (%s, %s, %s)\n", F, NP, reads_written, foN.file_name, foQ.file_name, foR.file_name);
 
 			// ...
 			struct stat s;
@@ -251,7 +254,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		}
 	}
 
-	LOG("\tCleaning ...\n");
+	DLOG("\tCleaning ...\n");
 	f_free (&foQ);
 	f_free (&foN);
 	f_free (&foR);
@@ -261,7 +264,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		unlink (buffer);
 	}
 
-	LOG("\tDone!\n");
+	DLOG("\tDone!\n");
 	return new_size;
 }
 
@@ -322,138 +325,179 @@ void dump_trie (int fl, aho_trie *t) {
 	LOG("\tCreated temp file %d\n", fl);
 }
 
+void get_quality_stats (buffered_file *f, char *path, quality_mapping *qmap) {
+	f_open (f, path, IO_READ);
+	if (!f_alive (f)) ERROR ("Cannot open file %s!\n", path);
+
+	if (_interleave) _interleave = 10;
+	quality_mapping_init (qmap, f, read_length);
+	if (_interleave) _interleave = 1;
+	
+	if (_interleave) {
+		_interleave = 20;
+		quality_mapping_init (qmap + 1, f, read_length + 1);
+		_interleave = 1;
+	}
+	else if (_use_second_file) {
+		f_close (f);
+		f_open (f, get_second_file (path), IO_READ);
+		if (!f_alive (f)) ERROR ("Cannot open file %s!\n", get_second_file (path));
+		quality_mapping_init (qmap + 1, f, read_length + 1);
+	}
+	f_close (f);
+
+	for (int i = 0; i < (_use_second_file | _interleave) + 1; i++)
+		LOG("\tPaired end #%d, quality offset: %d\n"
+			 "\t               read length: %d\n", i+1, qmap[i].offset, read_length[i]);
+
+}
+
 void compress (char **files, int nf, const char *output, const char *pattern_path) {
 	char line[MAXLINE], read[2][MAXLINE];
-	quality_mapping qmap[2];
 
-	if (_interleave) _use_second_file = 1;
+	int start_time = TIME;
 
 	LOG("Buffer size: %lldK, bucket storage size: %lldK\n", _file_buffer_size/1024, _max_bucket_set_size/1024);
 
+	/* initialize the trie */
+	DLOG ("Reading core strings ... ");
+	aho_trie *trie = read_patterns ();
+	DLOG ("OK\n");
+
+	/* initialize basic variables */
+	LOG ("Preprocessing FASTQ files ...\n");
+	uint64_t total_size = 0;     /* current working set size in bytes */
+	int temp_file_count = 0;    
+	int64_t original_size = 0;   /* size of input files, combined */
+
+	char use_only_second_file = _use_second_file;        /* we need original _use... variable for simplification */
+	if (_interleave)             /* all auxiliray functions will behave as in second file mode */
+		_use_second_file = 1;
+
+	aho_trie **buckets = malloc (_thread_count * sizeof(aho_trie*));
+	char ****data = malloc (_thread_count * sizeof(char*));
+	read_data *rdat = malloc (_thread_count * sizeof (read_data));
+	for(int t = 0; t < _thread_count; t++) {
+		rdat[t].data = malloc (5 * MAXLINE);
+		data[t] = malloc (2 * sizeof(char*));
+		data[t][0] = malloc (3 * sizeof (char*));
+		data[t][1] = malloc (3 * sizeof (char*));
+		for (int i=0; i<6; i++)
+			data[t][i/3][i%3] = malloc (MAXLINE * sizeof (char));
+	}
+
+	/* initialize the files */
 	for (int i = 0; i < MAXOPENFILES; i++)
 		f_init (file_pool + i, IO_SYS);
-
-	LOG("Reading core strings ... ");
-	aho_trie *trie = read_patterns ();
-	LOG("OK\n");
-
-	LOG("Preprocessing FASTQ files ...\n");
-	uint64_t total_size = 0;
-	int temp_file_count = 0;
-
 	buffered_file f[2];
 	f_init (f + 0, IO_GZIP);
-	if (_use_second_file && !_interleave)
+	if (use_only_second_file)
 		f_init (f + 1, IO_GZIP);
-	
-	int64_t original_size = 0;
+
+	/* obtain quality tables and stats */
+	quality_mapping qmap[2];
+	get_quality_stats (f, files[0], qmap);
+
+
+	/* iterate through files */
 	for (int i = 0; i < nf; i++) {
-		for (int F = 0; F < (_use_second_file&&!_interleave) + 1; F++) {
-			if (F) {
-				if (get_second_file (files[i]))
-					f_open (f + F, get_second_file (files[i]), IO_READ);
-				else
-					ERROR ("Cannot find paired-end for file %s\n", files[i]);
-			}
-			else
-				f_open (f + F, files[i], IO_READ);
-			if (!f_alive(f + F))
-				ERROR ("File %s does not exist\n", f[F].file_name);
+		/* open files */
+		for (int fi = 0; fi < use_only_second_file + 1; fi++) {
+			char *fn = !fi ? files[i] : get_second_file (files[i]); 
+
+			f_open (f + fi, fn, IO_READ); 
+			if (!f_alive (f + fi)) 
+				ERROR ("Cannot read file %s\n", fn);
 			
-			DLOG("\tAnalyzing file %s\n", files[i]);
 			struct stat s;
-			stat (f[F].file_name, &s);
+			stat (f[fi].file_name, &s);
 			original_size += s.st_size;
-
-			/* Get quality information from first file only */
-			if (i == 0) {
-				if(_interleave) _interleave=10;
-				quality_mapping_init (qmap + F, f + F, read_length + F);
-				if(_interleave) _interleave=1;
-				f_seek (f + F, 0);
-				LOG("\tPaired end #%d, quality offset: %d\n"
-					 "\t               read length: %d\n", F+1,qmap[F].offset, read_length[F]);
-			}
-		}
-		if (_interleave&&i==0) {
-			_interleave=20;
-			quality_mapping_init (qmap + 1, f, read_length + 1);
-			_interleave=1;
-			f_seek (f, 0);
-			LOG("\tPaired end #%d, quality offset: %d\n"
-				 "\t               read length: %d\n", 2,qmap[1].offset, read_length[1]);
 		}
 
-		
-		int64_t file_reads = 0;
-		read_data lo;
-		lo.data = global_buffer;
-		while (f_gets (f + 0, line, MAXLINE)) {
-			int64_t sz = output_name (line, (uint8_t*)global_buffer);
-			f_gets(f + 0, read[0], MAXLINE);
-			sz += output_read (read[0], (uint8_t*)(global_buffer + sz));
-			f_gets (f + 0, line, MAXLINE);
-			f_gets (f + 0, line, MAXLINE);
-			sz += output_quality (line, read[0], qmap + 0, (uint8_t*)(global_buffer + sz));
-			int64_t of2 = sz;
-			if (_use_second_file&&!_interleave) {
-				f_gets(f + 1, line, MAXLINE);
-				f_gets(f + 1, read[1], MAXLINE);
-				sz += output_read (read[1], (uint8_t*)(global_buffer + sz));
-				f_gets(f + 1, line, MAXLINE);
-				f_gets(f + 1, line, MAXLINE);
-				sz += output_quality (line, read[1], qmap + 1, (uint8_t*)(global_buffer + sz));
-			}
-			if (_interleave) {
-				f_gets(f, line, MAXLINE);
-				f_gets(f, read[1], MAXLINE);
-				sz += output_read (read[1], (uint8_t*)(global_buffer + sz));
-				f_gets(f, line, MAXLINE);
-				f_gets(f, line, MAXLINE);
-				sz += output_quality (line, read[1], qmap + 1, (uint8_t*)(global_buffer + sz));
-			}
-		
-			lo.of = of2;
-			lo.sz = sz;
-			aho_search (read[0], trie, &lo);
+		int64_t file_reads = 0;  /* read count for this file */
 
-			total_size += sz + 2 * sizeof(int64_t) + sizeof(struct bin_node*);
-			reads_count++;
-			file_reads++;
-			if (total_size >= _max_bucket_set_size) {
-				total_size = 0;
-				dump_trie (temp_file_count++, trie);
+		int d_idx = 0;          
+		while (1) {
+			if (!f_gets (f + 0, data[d_idx][0][0], MAXLINE))
+				break;
+			f_gets (f + 0, data[d_idx][0][1], MAXLINE);
+			f_gets (f + 0, data[d_idx][0][2], MAXLINE);
+			f_gets (f + 0, data[d_idx][0][2], MAXLINE);
+			buffered_file *fn = (_interleave ? f : (_use_second_file ? f + 1 : 0));
+			if (fn) {
+				f_gets (fn, data[d_idx][1][0], MAXLINE);
+				f_gets (fn, data[d_idx][1][1], MAXLINE);
+				f_gets (fn, data[d_idx][1][2], MAXLINE);
+				f_gets (fn, data[d_idx][1][2], MAXLINE);
+			}
+
+			d_idx++;
+
+			if (d_idx == _thread_count) {
+
+				#pragma omp parallel for reduction(+:total_size) num_threads(_thread_count) 
+				for (int t = 0; t < d_idx; t++) {
+					uint8_t *out = rdat[t].data;
+
+					int64_t sz = output_name (data[t][0][0], out);
+					sz += output_read        (data[t][0][1], out + sz);
+					sz += output_quality     (data[t][0][2], data[t][0][1], qmap + 0, out + sz);
+					int64_t of2 = sz;
+					if (_use_second_file || _interleave) {
+						sz += output_read    (data[t][1][1], out + sz);
+						sz += output_quality (data[t][1][2], data[t][1][1], qmap + 1, out + sz);
+					}
+
+					rdat[t].of = of2;
+					rdat[t].sz = sz;
+					aho_search (data[t][0][1], trie, &(buckets[t]));
+					aho_trie_bucket (buckets[t], rdat + t);
+
+					total_size += sz + 2 * sizeof(int64_t) + sizeof(struct bin_node*);
+				}
+				
+				reads_count += d_idx;
+				file_reads  += d_idx;
+				d_idx = 0;
+
+				if (total_size >= _max_bucket_set_size) {
+					total_size = 0;
+					dump_trie (temp_file_count++, trie);
+				}
 			}
 		}
-		f_close (f + 0);
-		if (_use_second_file&&!_interleave)
-			f_close (f + 1);
-		LOG("\tDone with file %s with %lld reads\n", files[i], file_reads);
-		if (_use_second_file&&!_interleave) 
+
+		for (int fi = 0; fi < use_only_second_file + 1; fi++)
+			f_close (f + fi);
+		LOG("\tDone with file %s, %lld reads found\n", files[i], file_reads);
+		if (use_only_second_file)
 			LOG("\t     also file %s with %lld reads\n", get_second_file (files[i]), file_reads); 
 	}
+
+	/* clean all stuff */
 	if (total_size)
 		dump_trie (temp_file_count++, trie);
+	for (int fi = 0; fi < use_only_second_file + 1; fi++)
+		f_free (f + fi);
+	DLOG("\tDone!\n");
 
-	f_free (f + 0);
-	if (_use_second_file&&!_interleave)
-		f_free (f + 1);
-	LOG("\tDone!\n");
-
-	LOG("Merging results\n");
+	/* merge */
+	LOG("Merging results ...\n");
 	merge (temp_file_count, 8);
 
-	int tm = TIME;
-
+	/* compress and output */
+	int scalce_preprocessing_time = TIME;
 	int64_t new_size = combine_and_compress_with_split (temp_file_count-1, output, (_split_reads ? _split_reads : reads_count), qmap[0].offset);
 
-	LOG("Cleaning\n");
+	/* cleaning again */
+	LOG("Cleaning ...\n");
 	aho_trie_free (trie);
 	remove(_temp_directory);
 	for (int i = 0; i < MAXOPENFILES; i++)
 		f_free (file_pool + i);
 
-	LOG("Statistics\n");
+	/* print useful stats */
+	LOG("Statistics:\n");
 	LOG("\tTotal number of reads: %lld\n", reads_count);
 	LOG("\tRead length: first end %d\n", read_length[0]);
 	if (_use_second_file) 
@@ -461,7 +505,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	LOG("\tUnbucketed reads count: %d, bucketed percentage %.2lf\n", unbuck(), 100.0 * ((double)(reads_count - unbuck()) / reads_count));
 	LOG("\tLossy percentage: %d\n", _quality_lossy_percentage);
 	LOG("\tTime elapsed: %02d:%02d:%02d\n", TIME/3600, (TIME/60)%60, TIME%60);
-	LOG("\tCompression time: %02d:%02d:%02d\n", (TIME-tm)/3600, ((TIME-tm)/60)%60, (TIME-tm)%60);
+	LOG("\tCompression time: %02d:%02d:%02d\n", (TIME-scalce_preprocessing_time)/3600, ((TIME-scalce_preprocessing_time)/60)%60, (TIME-scalce_preprocessing_time)%60);
 	LOG("\tOriginal size: %.2lfM, new size: %.2lfM, compression factor: %.2lf\n", original_size/(1024.0*1024.4), new_size/(1024.0*1024.0), (original_size/(double)new_size));
 }
 

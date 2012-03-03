@@ -29,6 +29,7 @@
 #define IO_SYS   10
 #define IO_GZIP  20
 #define IO_BZIP  30
+#define IO_PGZIP 40
 
 // Max. characters per line
 #define MAXLINE 		2500
@@ -53,6 +54,7 @@ extern char      _library_name[MAXLINE];
 extern int       _time_elapsed;
 extern int       _split_reads;
 extern int       _compression_mode;
+extern int       _thread_count;
 extern char      _interleave;
 
 extern int32_t read_length[2];                 /* length of read in one fastq file */

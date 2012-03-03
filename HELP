@@ -68,14 +68,15 @@ DESCRIPTION
 			
 	-c, --compression [mode]
 		Select compression mode. Currently available modes are:
-			no - No compression
-			gz - gzip compression level 6
-			bz - bzip2 compression
-		Default: gz
+			no   - No compression
+			gz   - gzip compression level 6
+			pigz - parallelized gzip
+			bz   - bzip2 compression
+		Default: gz if thread count is 1; otherwise pigz
 	
 	-p, --lossy-percentage [percentage]
 		Set lossy error percentage.
-		Default: 30.0
+		Default: 0 (no lossy)
 		
 	-s, --sample-size [count]
 		Specifies how many quality values should be used for statistical analysis
@@ -85,6 +86,10 @@ DESCRIPTION
 	-t, --temp-directory [directory]
 		Set directory for holding temporary files. 
 		Default: __temp__
+
+	-T, --threads [count]
+		Specifies the number of worker threads. If none specified, number of available processors
+		will be used.
 		
 AUTHOR
 	Faraz Hach

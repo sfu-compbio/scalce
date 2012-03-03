@@ -22,13 +22,17 @@ void bin_insert (bin *b, read_data *d) {
 	n->data.of   = d->of;
 	n->data.data = malloc (d->sz * sizeof (uint8_t));
 	memcpy (n->data.data, d->data, d->sz);
-	if (b->size == 0)
-		b->first = b->last = n;
-	else {
-		b->last->next = n;
-		b->last = n;
+
+	#pragma omp critical 
+	{
+		if (b->size == 0)
+			b->first = b->last = n;
+		else {
+			b->last->next = n;
+			b->last = n;
+		}
+		b->size++;
 	}
-	b->size++;
 }
 
 /* safely dispose bin */
@@ -128,8 +132,13 @@ void aho_trie_init (aho_trie *t) {
 /* bucket one read */
 void aho_trie_bucket (aho_trie *t, read_data *d) {
 	bin_insert (&(t->bin), d);
-	t->bin_size++;
+
+	#pragma omp critical 
+	{
+		t->bin_size++;
+	}
 }
+
 /* insert core string into trie */
 void pattern_insert (char *c, aho_trie *n, int level) {
 	if (*c != 0 && *c != '\n') {
@@ -239,7 +248,7 @@ aho_trie *read_patterns () {
 }
 
 /* search for core strings in the read */
-void aho_search (char *text, aho_trie *root, read_data *pos) {
+void aho_search (char *text, aho_trie *root, aho_trie **bucket) {
 	aho_trie *cur = root, *largest = 0, *x;
 	for (int i = 0; text[i] != 0 && text[i] != '\n'; i++) {
 		if (text[i] == 'N')
@@ -255,17 +264,20 @@ void aho_search (char *text, aho_trie *root, read_data *pos) {
 			}
 		} 
 	}
-	aho_trie_bucket (largest ? largest : root, pos);
+	*bucket = (largest ? largest : root);
 }
 
 /* 2/8 read encoding */
 int output_read (char *line, uint8_t *dest) {
 	int bc = 0;
-	int l = strlen (line);
-	for (int i = 0; i < l; i += 4) {
+
+	char *p = line;
+	while (*p) {
 		uint8_t ca = 0;
-		for (int j = 0; j < 4; j++)
-			ca = (ca << 2) | ((i+j<l)?getval(line[i+j]):0);
+		for (int j = 0; j < 4; j++) {
+			ca = (ca << 2) | ((*p)? getval(*p): 0);
+			if (*p) p++;
+		}
 		dest[bc++] = ca;
 	}
 

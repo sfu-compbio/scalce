@@ -120,6 +120,7 @@ void decompress (const char *path, const char *out) {
 				f_read(fN+F, &chr, 1);
 				buffer[0] = '@'; 
 				f_read(fN+F, buffer+1, chr);
+
 				f_write(pfo[F],buffer, chr+1);
 			}
 			else {

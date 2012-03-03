@@ -5,8 +5,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <getopt.h>
+#include <unistd.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/sysctl.h>
+#include <sys/sysinfo.h>
 
 #include "const.h"
 #include "compress.h"
@@ -14,7 +17,7 @@
 
 // Argument globals
 int       _quality_sample_lines     = 100000;
-int       _quality_lossy_percentage = 30;
+int       _quality_lossy_percentage = 0;
 char      _use_second_file          = 0;
 char      _use_names						= 1;
 uint64_t	 _file_buffer_size         = 128 * 1024 * 1024;
@@ -26,7 +29,8 @@ char      _pattern_path[MAXLINE];  //  = "patterns.bin";
 int       _split_reads              = 0;
 int		 _compression_mode         = IO_GZIP;
 char      _interleave               = 0;
-int       _time_elapsed = 0;
+int       _time_elapsed 				= 0;
+int       _thread_count 				= 1;
 
 extern char _binary_HELP_start;
 extern char _binary_HELP_end;
@@ -75,6 +79,13 @@ void check_arguments (char **files, int length, int mode) {
 int main (int argc, char **argv) {
 	_time_elapsed = time(0);
 
+	// set default number of threads
+	_thread_count = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
+
+	LOG("SCALCE %s [OpenMP; threads=%d]\n", SCALCE_VERSION, _thread_count+1);
+	if (_thread_count > 1 && _compression_mode == IO_GZIP)
+		_compression_mode = IO_PGZIP;
+
 	int mode = 0, opt; // default -  compress
 	struct option long_opt[] = {
 		{ "help",              0, NULL, 'h' },
@@ -91,14 +102,15 @@ int main (int argc, char **argv) {
 		{ "paired-end",        0, NULL, 'r' },
 		{ "skip-names",        1, NULL, 'n' },
 		{ "split-reads",       1, NULL, 'S' },
-		{ "version",		   0, NULL, 'v' },
+		{ "threads",           1, NULL, 'T' },
+		{ "version",		     0, NULL, 'v' },
 		{ NULL,                0, NULL,  0  }
 	};
 	do {
-		opt = getopt_long (argc, argv, "vhp:b:dc:o:s:P:t:B:rin:S:", long_opt, NULL);
+		opt = getopt_long (argc, argv, "vhp:b:T:dc:o:s:P:t:B:rin:S:", long_opt, NULL);
 		switch (opt) {
 			case 'v':
-				LOG("%s\n",SCALCE_VERSION);
+			//	LOG("%s\n",SCALCE_VERSION);
 				exit(0);
 			case 'h':
 				help ();
@@ -111,6 +123,8 @@ int main (int argc, char **argv) {
 					_compression_mode = IO_BZIP;
 				else if (!strcmp (optarg, "gz"))
 					_compression_mode = IO_GZIP;
+				else if (!strcmp (optarg, "pigz"))
+					_compression_mode = IO_PGZIP;
 				else if (!strcmp (optarg, "no"))
 					_compression_mode = IO_SYS;
 				else
@@ -136,6 +150,9 @@ int main (int argc, char **argv) {
 			break;
 			case 'p':
 				_quality_lossy_percentage = atoi (optarg);
+				break;
+			case 'T':
+				_thread_count = atoi (optarg);
 				break;
 			case 'S':
 				_split_reads = atoi (optarg);

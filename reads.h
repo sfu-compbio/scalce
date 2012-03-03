@@ -41,7 +41,8 @@ struct aho_trie {
 };
 
 aho_trie *read_patterns ();
-void aho_search (char *text, aho_trie *root, read_data *pos);
+void aho_search (char *text, aho_trie *root, aho_trie **bucket);
+void aho_trie_bucket (aho_trie *t, read_data *d);
 int output_read (char *line, uint8_t *dest);
 void aho_output (aho_trie *root, buffered_file *f);
 void aho_trie_free (aho_trie *t);

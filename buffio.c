@@ -70,6 +70,47 @@ int64_t Sread  (void* handle, void *c, int64_t sz) { return read ((int64_t)handl
 int64_t Sseek  (void* handle, int64_t l)           { return lseek64 ((int64_t)handle, l, SEEK_SET); }
 	
 
+int64_t PZopen (const char *path, int mode, char *c) {
+	if (!mode) 
+		ERROR("Parallel support available only in write-mode");
+
+	char bf[MAXLINE];
+	snprintf (bf, MAXLINE, "%s.gz", path); 
+	strncpy (c, bf, MAXLINE);
+
+	int fd[2];
+	if (pipe (fd) == -1)
+		ERROR ("Pipe failed");
+	int pid = fork ();
+	if (pid == -1)
+		ERROR ("Fork failed");
+
+	if (pid == 0) { // child, call pigz
+		close (fd[1]);
+
+		int fo = open64 (bf, O_CREAT | O_WRONLY | O_TRUNC, S_IRUSR | S_IWUSR);
+		dup2 (fo, 1); // set stdout to file
+		dup2 (fd[0], 0); // set stdin to pipe
+		close (fd[0]);
+
+		char *const pl[] = { "pigz", "-c", 0 };
+		execvp ("pigz", pl);
+		ERROR ("pigz exec failed");
+		abort();
+	}
+	else { // parent
+		close (fd[0]);
+		return fd[1];
+	}
+
+	return 0;
+}
+
+int     PZclose (void* handle)                      { return close ((int64_t)handle); }
+int64_t PZwrite (void* handle, void *c, int64_t sz) { return write ((int64_t)handle, c, sz); }	
+int64_t PZread  (void* handle, void *c, int64_t sz) { return read ((int64_t)handle, c, sz); }
+int64_t PZseek  (void* handle, int64_t l)           { ERROR ("Seek not ssupported with pigz"); }
+
 char f_alive (buffered_file *f) {
 	return (f->handle != 0);
 }
@@ -183,6 +224,13 @@ void f_init (buffered_file *f, int algorithm) {
 			f->my_seek  = Zseek;
 			f->my_read  = Zread;
 			f->my_write = Zwrite;
+			break;
+		case IO_PGZIP:
+			f->my_open  = PZopen;
+			f->my_close = PZclose;
+			f->my_seek  = PZseek;
+			f->my_read  = PZread;
+			f->my_write = PZwrite;
 			break;
 		case IO_BZIP:
 			f->my_open  = Bopen;

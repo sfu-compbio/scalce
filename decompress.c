@@ -130,7 +130,7 @@ void decompress (const char *path, const char *out) {
 				snprintf((char*)buffer, MAXLINE, "@%s.%lld", library, nameidx);
 				f_write(pfo[F],buffer,strlen((char*)buffer));
 			}
-			if(_interleave && chr > 0 && buffer[chr] != F + 1 - '0' && buffer[chr - 1] != '/') {
+			if(_interleave && (!names ||  (chr > 0 && buffer[chr] != F + 1 - '0' && buffer[chr - 1] != '/'))) {
 				snprintf((char*)buffer,3,"/%d",F+1);
 				f_write(pfo[F],buffer, 2);
 			}

@@ -426,7 +426,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 		int64_t file_reads = 0;  /* read count for this file */
 
-		int d_idx = 0;          
+		int d_idx = 0; 
 		while (1) {
 			if (!f_gets (f + 0, data[d_idx][0][0], MAXLINE))
 				break;
@@ -444,7 +444,6 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 			d_idx++;
 
 			if (d_idx == _thread_count) {
-
 				#pragma omp parallel for reduction(+:total_size) num_threads(_thread_count) 
 				for (int t = 0; t < d_idx; t++) {
 					uint8_t *out = rdat[t].data;
@@ -475,6 +474,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 					dump_trie (temp_file_count++, trie);
 				}
 			}
+
 		}
 
 		for (int fi = 0; fi < use_only_second_file + 1; fi++)

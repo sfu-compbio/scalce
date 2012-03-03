@@ -1,0 +1,102 @@
+NAME
+	SCALCE - tool for compressing FASTQ files.
+
+SYNOPSIS
+	scalce [OPTION]... -o [OUTPUT] [FILES]...
+
+DESCRIPTION
+	SCALCE will compress provided FASTQ files and generate three output files
+	with extension .scalcen (for read names), .scalcer (reads) and .scalceq
+	(qualities). The read length should be fixed in any of the mates in one run.
+	This means, if you are passing 3 paired libraries, then the read lengths
+	mate1 should be fixed (i.e. 50bp). The read lenghts for the second mate could
+	be different that the first mate.
+	
+	Mandatory parameters:
+	
+	-o, --output
+		Specifies the prefix for the output file names. Extensions and basic 
+		information will be appended.
+		Standard output is supported only when decompressing interleaved file, 
+		and it is specified by a dash (i.e scalce -o -).
+	
+	Shared arguments (both for compression and decompression):
+
+	-b, --file-buffer-size [size][MG]
+		Set internal file buffer size (M)egabytes or (G)igabytes. This size is
+		used for internal I/O bufering.
+		Default: 128M
+
+	-r, --paired-end
+		Use paired-end FASTQ files when the two ends are in seprate files. The
+		files should be named with _1 and _2. When you are passing it as input, only 
+		give _1 file and SCALCE will replace _1 with _2 and read the second file.
+		File name Example: XX_1.fq XX_2.fq
+
+	-S, --split-reads [count]
+		Split output file to small files with [count] reads each.
+
+	-n, --skip-names [library]
+		Discard original read names, and rename each read with the
+		library prefix, such as library.1, library.2, ....
+
+	-i, --interleaved
+		Use this option when you want the paired-end FASTQ files to be in 
+		interleaved format.
+
+	Utility arguments:
+	
+	-h, --help
+		Prints short usage information.
+	
+	-v, --version 
+		Prints the current version of SCALCE.
+		
+	Decompression arguments:
+	
+	-d, --decompress
+		Uncompress scalce files. Provide just one file name (scalceq for example), 
+		and the program will take care for the other files.
+	
+	Compression arguments:
+				
+	-B, --bucket-set-size [size][MG]
+		Set bucket set size (M)egabytes or (G)igabytes. This parameter limits
+		the main memory accessible to SCALCE. Swap files will be used to keep 
+		all neccessary data.
+		Default: 4G
+			
+	-c, --compression [mode]
+		Select compression mode. Currently available modes are:
+			no - No compression
+			gz - gzip compression level 6
+			bz - bzip2 compression
+		Default: gz
+	
+	-p, --lossy-percentage [percentage]
+		Set lossy error percentage.
+		Default: 30.0
+		
+	-s, --sample-size [count]
+		Specifies how many quality values should be used for statistical analysis
+		during the lossy trasformation table creation.
+		Default: 100000
+	
+	-t, --temp-directory [directory]
+		Set directory for holding temporary files. 
+		Default: __temp__
+		
+AUTHOR
+	Faraz Hach
+	Ibrahim Numanagic
+	Can Alkan
+	S. Cenk Sahinalp
+	
+REPORTING BUGS
+	Please report bugs through the SCALCE webpage at http://scalce.sourceforge.net
+
+COPYRIGHT
+	2011-
+	Simon Fraser University, BC, V5A 1S6 Canada
+	University of Washington, Seattle, WA, 98195-5065
+

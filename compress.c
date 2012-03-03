@@ -427,23 +427,27 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 		int64_t file_reads = 0;  /* read count for this file */
 
 		int d_idx = 0; 
+		char done = 0;
 		while (1) {
-			if (!f_gets (f + 0, data[d_idx][0][0], MAXLINE))
-				break;
-			f_gets (f + 0, data[d_idx][0][1], MAXLINE);
-			f_gets (f + 0, data[d_idx][0][2], MAXLINE);
-			f_gets (f + 0, data[d_idx][0][2], MAXLINE);
-			buffered_file *fn = (_interleave ? f : (_use_second_file ? f + 1 : 0));
-			if (fn) {
-				f_gets (fn, data[d_idx][1][0], MAXLINE);
-				f_gets (fn, data[d_idx][1][1], MAXLINE);
-				f_gets (fn, data[d_idx][1][2], MAXLINE);
-				f_gets (fn, data[d_idx][1][2], MAXLINE);
+			if (!f_gets (f + 0, data[d_idx][0][0], MAXLINE)) {
+				done = 1;
+			}
+			if (!done) {
+				f_gets (f + 0, data[d_idx][0][1], MAXLINE);
+				f_gets (f + 0, data[d_idx][0][2], MAXLINE);
+				f_gets (f + 0, data[d_idx][0][2], MAXLINE);
+				buffered_file *fn = (_interleave ? f : (_use_second_file ? f + 1 : 0));
+				if (fn) {
+					f_gets (fn, data[d_idx][1][0], MAXLINE);
+					f_gets (fn, data[d_idx][1][1], MAXLINE);
+					f_gets (fn, data[d_idx][1][2], MAXLINE);
+					f_gets (fn, data[d_idx][1][2], MAXLINE);
+				}
+
+				d_idx++;
 			}
 
-			d_idx++;
-
-			if (d_idx == _thread_count) {
+			if (d_idx == _thread_count || done) {
 				#pragma omp parallel for reduction(+:total_size) num_threads(_thread_count) 
 				for (int t = 0; t < d_idx; t++) {
 					uint8_t *out = rdat[t].data;
@@ -475,6 +479,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 				}
 			}
 
+			if (done) break;
 		}
 
 		for (int fi = 0; fi < use_only_second_file + 1; fi++)

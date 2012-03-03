@@ -121,13 +121,16 @@ void decompress (const char *path, const char *out) {
 				buffer[0] = '@'; 
 				f_read(fN+F, buffer+1, chr);
 
+				if(_interleave && chr > 0 && buffer[chr - 1] == '/')
+					buffer[chr] = F + 1 + '0';
+
 				f_write(pfo[F],buffer, chr+1);
 			}
 			else {
 				snprintf((char*)buffer, MAXLINE, "@%s.%lld", library, nameidx);
 				f_write(pfo[F],buffer,strlen((char*)buffer));
 			}
-			if(_interleave) {
+			if(_interleave && chr > 0 && buffer[chr] != F + 1 - '0' && buffer[chr - 1] != '/') {
 				snprintf((char*)buffer,3,"/%d",F+1);
 				f_write(pfo[F],buffer, 2);
 			}

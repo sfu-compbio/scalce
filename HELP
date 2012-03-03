@@ -9,7 +9,7 @@ DESCRIPTION
 	with extension .scalcen (for read names), .scalcer (reads) and .scalceq
 	(qualities). The read length should be fixed in any of the mates in one run.
 	This means, if you are passing 3 paired libraries, then the read lengths
-	mate1 should be fixed (i.e. 50bp). The read lenghts for the second mate could
+	mate1 should be fixed (i.e. 50bp). The read lengths for the second mate could
 	be different that the first mate.
 	
 	Mandatory parameters:
@@ -24,11 +24,11 @@ DESCRIPTION
 
 	-b, --file-buffer-size [size][MG]
 		Set internal file buffer size (M)egabytes or (G)igabytes. This size is
-		used for internal I/O bufering.
+		used for internal I/O buffering.
 		Default: 128M
 
 	-r, --paired-end
-		Use paired-end FASTQ files when the two ends are in seprate files. The
+		Use paired-end FASTQ files when the two ends are in separate files. The
 		files should be named with _1 and _2. When you are passing it as input, only 
 		give _1 file and SCALCE will replace _1 with _2 and read the second file.
 		File name Example: XX_1.fq XX_2.fq
@@ -63,7 +63,7 @@ DESCRIPTION
 	-B, --bucket-set-size [size][MG]
 		Set bucket set size (M)egabytes or (G)igabytes. This parameter limits
 		the main memory accessible to SCALCE. Swap files will be used to keep 
-		all neccessary data.
+		all necessary data.
 		Default: 4G
 			
 	-c, --compression [mode]
@@ -80,7 +80,7 @@ DESCRIPTION
 		
 	-s, --sample-size [count]
 		Specifies how many quality values should be used for statistical analysis
-		during the lossy trasformation table creation.
+		during the lossy transformation table creation.
 		Default: 100000
 	
 	-t, --temp-directory [directory]
@@ -98,7 +98,7 @@ AUTHOR
 	S. Cenk Sahinalp
 	
 REPORTING BUGS
-	Please report bugs through the SCALCE webpage at http://scalce.sourceforge.net
+	Please report bugs through the SCALCE web page at http://scalce.sourceforge.net
 
 COPYRIGHT
 	2011-

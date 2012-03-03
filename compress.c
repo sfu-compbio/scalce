@@ -146,7 +146,17 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	f_init (&foQ, _compression_mode);
 	f_init (&foR, _compression_mode);
 	f_init (&foN, _compression_mode);
-	LOG ("compression: %s\n", _compression_mode==IO_SYS?"no compression":(_compression_mode==IO_PGZIP?"pigz":(_compression_mode==IO_PGZIP?"pigz":"bzip")));
+	LOG ("compression: %s\n", 
+			_compression_mode == IO_SYS 
+				? "no compression"
+				: (_compression_mode == IO_PGZIP
+						? "pigz"
+						: (_compression_mode == IO_GZIP
+								? "gzip"
+								: "bzip"
+						)
+				)
+	);
 
 	int64_t new_size = 0;
 

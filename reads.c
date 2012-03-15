@@ -8,6 +8,11 @@
 #include "reads.h"
 #include "const.h"
 
+char *patterns[5000000];
+static int  pattern_c = 0;
+
+void bin_prepare (aho_trie *t);
+
 /* initialize bin */
 void bin_init (bin *b) {
 	b->first = b->last = 0;
@@ -20,6 +25,7 @@ void bin_insert (bin *b, read_data *d) {
 	n->data.sz   = d->sz;
 	n->next      = 0;
 	n->data.of   = d->of;
+	n->data.end  = d->end;
 	n->data.data = malloc (d->sz * sizeof (uint8_t));
 	memcpy (n->data.data, d->data, d->sz);
 
@@ -49,27 +55,43 @@ void bin_free (bin *b) {
 /* dump bin contents to file 
  * f must contain 5 pointers, for names, reads and qualities files
  * (and reads and qualities for paired end) */
-void bin_dump (bin *b, buffered_file *f, int32_t id) {
+void bin_dump (aho_trie *t, buffered_file *f) {
 	int64_t tN = 0, tQ = 0, tR = 0, tR2 = 0, tQ2 = 0;
 	int64_t nN = 0, nR = 0, nQ = 0, nR2 = 0, nQ2 = 0;
 	
-	for (bin_node *n = b->first; n; n = n->next) {
+	int sz_read;
+	if (t->output >= 0) sz_read = SZ_READ( read_length[0] - strlen(patterns[t->output]) );
+	else sz_read = SZ_READ (read_length[0]);
+
+	for (bin_node *n = t->bin.first; n; n = n->next) {
 		read_data *r = &(n->data);
 		if (_use_names)
 			nN = f_write (f + 0, r->data, r->data[0] + 1);
-		nR = f_write (f + 1, r->data + nN, SZ_READ (read_length[0]));
+		nR = f_write (f + 1, r->data + nN, sz_read);
+		// write the end marker
+		f_write(f+1, &(r->end), sizeof(int16_t));
+
 		nQ = f_write (f + 2, r->data + nN + nR, r->of - nN - nR);
 
 		if (_use_second_file) {
 			nR2 = f_write (f + 4, r->data + r->of, SZ_READ (read_length[1]));
 			nQ2 = f_write (f + 5, r->data + r->of + nR2, r->sz - (r->of + nR2));
 		}
-		tN += nN; tQ += nQ; tR += nR; tR2 += nR2; tQ2 += nQ2;
+		tN += nN; tQ += nQ; tR += nR + sizeof(int16_t); tR2 += nR2; tQ2 += nQ2;
 		free (r->data);
 	}
-	bin_free (b);
+	bin_free (&(t->bin));
+	
+	if (t->output == -1) {
+		int32_t x = MAXBIN - 1;
+		f_write (f + 3, &x, sizeof(int32_t)); // which core
+		f_write (f + 3, &x, sizeof(int32_t)); // which core?
+	}
+	else {
+		f_write (f + 3, &(t->id),     sizeof(int32_t)); // which core?
+		f_write (f + 3, &(t->output), sizeof(int32_t)); // which core?
+	}
 
-	f_write (f + 3, &id, sizeof(int32_t));
 	f_write (f + 3, &tN, sizeof(int64_t));
 	f_write (f + 3, &tR, sizeof(int64_t));
 	f_write (f + 3, &tQ, sizeof(int64_t));
@@ -120,7 +142,7 @@ int  unbucketed  = 0;  /* number of unbucketed reads */
 /* initialize aho trie */
 void aho_trie_init (aho_trie *t) {
 	t->fail = 0;
-	t->output = 0;
+	t->output = -1;
 	t->bin_size = 0;
 	t->next_to_output = 0;
 	t->level = 0;
@@ -140,19 +162,20 @@ void aho_trie_bucket (aho_trie *t, read_data *d) {
 }
 
 /* insert core string into trie */
-void pattern_insert (char *c, aho_trie *n, int level) {
+void pattern_insert (char *c, aho_trie *n, int level, int id) {
 	if (*c != 0 && *c != '\n') {
-		*c = getval (*c);
-		if (n->child[*c] == 0) {
-			n->child[*c] = malloc (sizeof (struct aho_trie));
-			aho_trie_init (n->child[*c]);
-			n->child[*c]->level = level + 1;
+		char cx = getval (*c);
+		if (n->child[cx] == 0) {
+			n->child[cx] = malloc (sizeof (struct aho_trie));
+			aho_trie_init (n->child[cx]);
+			n->child[cx]->level = level + 1;
 			nodes_count++;
 		}
-		pattern_insert (c + 1, n->child[*c], level + 1); 
+		pattern_insert (c + 1, n->child[cx], level + 1, id); 
 	}
 	else {
-		n->output = 1;
+		n->output = id;
+//		n-> = 1;
 	}
 }
 
@@ -179,7 +202,7 @@ void prepare_aho_automata (aho_trie *root) {
 					f = f->fail;
 				t->fail = (f->child[i] ? f->child[i] : root);
 				trie_queue_push (&q, t);
-				t->next_to_output = t->fail->output ? t->fail : t->fail->next_to_output;
+				t->next_to_output = (t->fail->output >= 0) ? t->fail : t->fail->next_to_output;
 			}
 		}
 		cur->id = ++traversed;
@@ -197,7 +220,7 @@ void prepare_aho_automata (aho_trie *root) {
 				c = c->fail;
 			cur->child[i] = (c->child[i] ? c->child[i] : root);
 			c = cur;
-			while (c && !c->output)
+			while (c && c->output == -1)
 				c = c->next_to_output;
 			cur->next_to_output = c;
 		}
@@ -237,10 +260,13 @@ aho_trie *read_patterns () {
 			int nl = 0;
 			memcpy (&x, data + pos, sz);
 			pos += sz;
+			
+			patterns[pattern_c] = malloc( ln );
 			for(int j = ln - 1; j >= 0; j--)
-				line[nl++] = alphabet[ (x >> (2 * j)) & 3 ];
-			line[nl++] = 0;
-			pattern_insert (line, root, 0);
+				patterns[pattern_c][nl++] = alphabet[ (x >> (2 * j)) & 3 ];
+			patterns[pattern_c][nl++] = 0;
+			pattern_insert (patterns[pattern_c], root, 0, pattern_c);
+			pattern_c++;
 		}
 	}
 	prepare_aho_automata (root);
@@ -248,41 +274,59 @@ aho_trie *read_patterns () {
 }
 
 /* search for core strings in the read */
-void aho_search (char *text, aho_trie *root, aho_trie **bucket) {
+int aho_search (char *text, aho_trie *root, aho_trie **bucket) {
 	aho_trie *cur = root, *largest = 0, *x;
+
+	int bestpos = -1;
 	for (int i = 0; text[i] != 0 && text[i] != '\n'; i++) {
-		if (text[i] == 'N')
-			cur = root;
-		else {
+//		if (text[i] == 'N') 
+	//		cur = root;
+	//	else {
 			cur = cur->child[getval (text[i])];
 			if (cur->next_to_output) {
 				x = cur->next_to_output;
 				if (!largest || 
 						largest->bin_size < x->bin_size || 
-						(largest->bin_size == x->bin_size && largest->level < x->level)) 
+						(largest->bin_size == x->bin_size && largest->level < x->level)) {
+					bestpos = i;
 					largest = x;
+				}
 			}
-		} 
+	//	} 
 	}
 	*bucket = (largest ? largest : root);
+	return bestpos;
 }
 
 /* 2/8 read encoding */
-int output_read (char *line, uint8_t *dest) {
+int output_read (char *line, uint8_t *dest, int n, int l) {
 	int bc = 0;
 
-	char *p = line;
-	while (*p) {
-		uint8_t ca = 0;
-		for (int j = 0; j < 4; j++) {
-			ca = (ca << 2) | ((*p)? getval(*p): 0);
-			if (*p) p++;
+	uint8_t ca = 0, cc = 0;
+	for (int i = n + l; line[i]; i++) {
+		ca = (ca << 2) | (line[i] ? getval(line[i]): 0);
+		cc++;
+		if (cc == 4) {
+			dest[bc++] = ca;
+			cc = 0;
 		}
+	}
+	for (int i = 0; i < n; i++) {
+		ca = (ca << 2) | (line[i] ? getval(line[i]): 0);
+		cc++;
+		if (cc == 4) {
+			dest[bc++] = ca;
+			cc = 0;
+		}
+	}
+	if (cc) {
+		while (cc != 4) { ca <<= 2; cc++; }
 		dest[bc++] = ca;
 	}
 
 	return bc;
 }
+
 
 /* flush (output) all contents of trie in the file
  * unbucketed reads are flushed at the end
@@ -301,8 +345,10 @@ void aho_output (aho_trie *root, buffered_file *f) {
 
 	while (q.size) {
 		aho_trie *cur = trie_queue_pop (&q);
-		if (cur->bin.size)
-			bin_dump (&(cur->bin), f, cur->id);
+		if (cur->bin.size) {
+			bin_prepare (cur);
+			bin_dump (cur, f);
+		}
 		for (int i = 0; i < 4; i++) 
 			if (cur->child[i] && !visited[cur->child[i]->id]) {
 				trie_queue_push (&q, cur->child[i]);
@@ -311,7 +357,8 @@ void aho_output (aho_trie *root, buffered_file *f) {
 	}
 	if (root->bin.size) {
 		unbucketed += root->bin.size;
-		bin_dump (&(root->bin), f, MAXBIN - 1);
+		bin_prepare (root);
+		bin_dump (root, f);
 	}
 
 	trie_queue_free (&q);
@@ -341,8 +388,93 @@ void aho_trie_free (aho_trie *t) {
 	}
 	for (int i = 0; i < nodes_count; i++) if (p[i]) {
 		bin_free (&(p[i]->bin));
+		if (p[i]->output >= 0 && patterns[p[i]->output]) {
+			free(patterns[p[i]->output]);
+			patterns[p[i]->output] = 0;
+		}
 		free (p[i]);
 	}
 	free (visited);
 	free (p);
 }
+
+
+/** fast radix sorting for dna strings  *
+  * params: pos   - in-string position (default 0)
+  *         start - start position of partition
+  *			size  - partition size
+  *			v     - vector to be sorted (vector of pointers to string references!)
+  */
+#define _POS(n,x,i) \
+	(( (n[x]->data.data[ n[x]->data.data[0] + 1 + ((i) / 4)]) >> ((3 - ((i) % 4)) * 2) ) & 3)
+
+bin_node **_nodes = 0,
+			**_temp  = 0;
+int _bin_sz = 0, 
+	 _allocd = 0, 
+	 _limit  = 0;
+void _radix_sort (int pos, int64_t start, int64_t size) {
+	if (size <= 1)  /* trivial case: subarray of size 1 */
+		return;
+	if (pos >= _limit) /* trivial case: exceeded string length */
+		return;
+
+	/* obtain character stats in count array */
+	int count[4] = {0}; 
+	for (int i = start; i < start + size; i++) {
+		count[ _POS(_nodes, i, pos) ]++;
+		_temp[i] = _nodes[i]; /* keep original ordering of vector safe */
+	}
+
+	/* get cumulative sums for count array */
+	int cumulative[5] = {0};
+	for (int i = 1; i < 5; i++)
+		cumulative[i] = cumulative[i - 1] + count[i - 1]; 
+
+	/* partition the original array according to the starting character */
+	for (int i = start; i < start + size; i++) {
+		char c = _POS(_temp, i, pos);
+		_nodes[start + cumulative[c]] = _temp[i];
+		cumulative[c]++; /* here, "fake" update cumulative sum in order to keep track of partition size */
+	}
+
+	/* update cumulatove sums */
+	cumulative[0] = 0;
+	for (int i = 1; i < 5; i++)
+		cumulative[i] = cumulative[i - 1] + count[i - 1];
+
+	/* sort partitions */
+	for (int i = 0; i < 4; i++)
+		_radix_sort(pos + 1, start + cumulative[i], cumulative[i + 1] - cumulative[i]);
+}
+
+void bin_prepare (aho_trie *t) {
+	return; 
+	bin *b = &(t->bin);
+	//LOG("core %10d    sz %10d orig len %2d\n",t->id,b->size,t->level);
+
+	if (_allocd == 0 && b->size < 10000) {
+		_allocd = 10000;
+		_temp = malloc (_allocd * sizeof(bin_node*));
+		_nodes = malloc (_allocd * sizeof(bin_node*));
+	}
+	else if (b->size > _allocd) {
+		free(_temp);
+		free(_nodes);
+		_temp = malloc (b->size * sizeof(bin_node*));
+		_nodes = malloc (b->size * sizeof(bin_node*));
+		_allocd=b->size;
+	}
+	_bin_sz = 0;
+	for (bin_node *n = b->first; n; n = n->next) 
+		_nodes[_bin_sz++] = n;
+	_limit=read_length[0] - t->level;
+	_radix_sort (0, 0, _bin_sz);
+	
+	b->first = _nodes[0];
+	b->last = _nodes[_bin_sz - 1];
+	for (int i = 0; i < _bin_sz - 1; i++)
+		_nodes[i]->next = _nodes[i + 1];
+	_nodes[_bin_sz - 1]->next = 0;
+}
+

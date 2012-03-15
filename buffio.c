@@ -15,7 +15,7 @@ int64_t Zopen (const char *path, int mode, char *c) {
 	gzFile handle;
 	if (mode) {
 		char bf[MAXLINE];
-		snprintf (bf, MAXLINE, "%s.gz", path); 
+		snprintf (bf, MAXLINE, "%s", path); 
 		handle = gzopen64 (bf, "wb");
 		strncpy (c, bf, MAXLINE);
 	}
@@ -35,7 +35,7 @@ int64_t Bopen (const char *path, int mode, char *c) {
 	BZFILE *handle;
 	if (mode) {
 		char bf[MAXLINE];
-		snprintf (bf, MAXLINE, "%s.bz2", path); 
+		snprintf (bf, MAXLINE, "%s", path); 
 		handle = BZ2_bzopen (bf, "wb");
 		strncpy (c, bf, MAXLINE);
 	}
@@ -75,7 +75,7 @@ int64_t PZopen (const char *path, int mode, char *c) {
 		ERROR("Parallel support available only in write-mode");
 
 	char bf[MAXLINE];
-	snprintf (bf, MAXLINE, "%s.gz", path); 
+	snprintf (bf, MAXLINE, "%s", path); 
 	strncpy (c, bf, MAXLINE);
 
 	int fd[2];

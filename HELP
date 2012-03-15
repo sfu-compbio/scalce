@@ -33,9 +33,6 @@ DESCRIPTION
 		give _1 file and SCALCE will replace _1 with _2 and read the second file.
 		File name Example: XX_1.fq XX_2.fq
 
-	-S, --split-reads [count]
-		Split output file to small files with [count] reads each.
-
 	-n, --skip-names [library]
 		Discard original read names, and rename each read with the
 		library prefix, such as library.1, library.2, ....

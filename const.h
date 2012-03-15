@@ -5,13 +5,17 @@
 
 #include <time.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <inttypes.h>
 
 #define GLOBALBUFSZ  5*MAXLINE
 #define MIN(x,y)  (((x)<(y))?(x):(y))
 #define TIME	(time(0)-_time_elapsed)
 #define SZ_READ(l)\
-	((l / 4) + (l % 4 > 0))
+	(((l) / 4) + ((l) % 4 > 0))
+#define SZ_QUAL(l)\
+	( l )
+//3 * ( (l / 4) + (l % 4 > 0) ) )
 #ifdef DEBUG
 #define LOG(c,...)\
 	fprintf(stderr, "[%02d:%02d:%02d]: "c, TIME/3600, (TIME/60)%60, TIME%60, ##__VA_ARGS__)
@@ -22,7 +26,7 @@
 #define DLOG(...)  ;
 #endif
 #define ERROR(c,...)\
-	{ fprintf (stderr, "(ERROR) "c, ##__VA_ARGS__); exit (1); }
+	{ fprintf (stderr, "(ERROR) "c, ##__VA_ARGS__); abort(); exit (1); }
 
 #define IO_READ  0
 #define IO_WRITE 1

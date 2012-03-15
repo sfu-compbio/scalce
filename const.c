@@ -14,7 +14,7 @@ char *get_second_file (const char *c) {
 	static char buf[MAXLINE];
 	strncpy (buf, c, MAXLINE);
 	for (int i = strlen(buf) - 1; i >= 0; i--)
-		if (buf[i] == '1') {
+		if (buf[i] == '1') { 
 			buf[i] = '2';
 			break;
 		}

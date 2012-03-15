@@ -1,11 +1,14 @@
 /// 786
 
+#include <assert.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "const.h"
 #include "qualities.h"
+#include "arithmetic.h"
 
 /* calculate phred score of phred char c */
 double phred (char c, int offset) { 
@@ -35,8 +38,9 @@ void quality_mapping_init (quality_mapping *q, buffered_file *f, int *read_lengt
 		if (!f_gets (f, line, MAXLINE)) 
 			break;
 		int l = strlen (line);
-		for (int j = 0; j < l; j++)
+		for (int j = 0; j < l; j++) {
 			stat[line[j]]++;
+		}
 		(*read_length) = l;
 
 		if (_interleave == 10) { /* skip second part in interleaved */
@@ -117,26 +121,58 @@ void quality_mapping_init (quality_mapping *q, buffered_file *f, int *read_lengt
 }
 
 /* encode quality using lossy table and gap closing */
-int output_quality (char* line, char *read, quality_mapping *q, uint8_t *dest) {
-	int l = 0;
+// extern!
+uint32_t ac_freq3[2][46*46],
+		   ac_freq4[2][46*46][46],
+			ac_sz = 0;
 
-	int bc = 0;
-	// Lossy compression
+int output_quality (char* line, char *read, quality_mapping *q, uint8_t *dest, int ZZ) {
+	static uint32_t prev[2][3] = { {500, 500, 500 }, {500,500,500} };
+
+//	uint8_t ch[4], ch_c = 0;
+	int bc = 0, l = 0;
 	while (line[l]) {
-		line[l] = (read[l] == 'N' ? ' ' : q->values[line[l]]);
+//		if (read[l] == 'N' && line[l] != q->offset) {
+//			fprintf(stderr,"DZEMO VOLI DZEM (N,%c,%c)\n",line[l],q->offset);
+//			abort();
+//		}
+		dest[bc++] = (read[l] == 'N' ? q->offset : q->values[line[l]]) - q->offset;
 		l++;
-	}
+/*		if (ch_c == 4 || !line[l]) {
+			dest[bc++] = (ch[0] << 2) | (ch[1] >> 4);
+			dest[bc++] = (ch[1] << 4) | (ch[2] >> 2);
+			dest[bc++] = (ch[2] << 6) | (ch[3]);	
 
-	// Gap closing
-	for (int i = 0; i < l; i++) {
-		int j;
-		for (j = i; j < l && line[j] == line[i] && (j - i) < 127; j++);
-		dest[bc++ ] = line[i];
-		if ((j - i) > 2) 
-			dest[bc++] = 128 + j - i - 1;
-		else if ((j - i) == 2) 
-			dest[bc++] = line[i];
-		i = j - 1;
+			uint8_t *o=dest; int i=bc-3;
+			assert(ch[0] == (o[i] >> 2));
+			assert(ch[1] == ( ((o[i + 0] << 4) | (o[i + 1] >> 4)) & 0x3f ));
+			assert(ch[2] == ( ((o[i + 1] << 2) | (o[i + 2] >> 6)) & 0x3f ));
+			assert(ch[3] == (o[i + 2] & 0x3f));
+
+			ch[0] = ch[1] = ch[2] = ch[3] = ch_c = 0;
+		}*/
+	}
+//	assert(bc==75);
+	for (int i = 0; i < bc; i++) {
+//		ac_freq1[dest[i]]++;
+		if (prev[ZZ][1] < 256) {
+//			ac_freq2[prev[2]][dest[i]]++;
+			ac_freq3[ZZ][prev[ZZ][1]*46 + dest[i]]++;
+			if (prev[ZZ][0] < 256) 
+				ac_freq4[ZZ][prev[ZZ][0]*46 + prev[ZZ][1]][dest[i]]++;
+		}
+		else { // (prev[2] >= 256) {
+			for (int e = 0; e < 46; e++)
+				for (int j = 0; j < 46; j++) {
+					for (int l = 0; l < 46; l++) {
+						ac_freq4[ZZ][e*46 + j][l] = 1;
+					}
+				}
+		}
+		prev[ZZ][0] = prev[ZZ][1];
+//		prev[1] = prev[2];
+		prev[ZZ][1] = dest[i];
+//		ac_sz++;
 	}
 	return bc;
 }

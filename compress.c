@@ -17,6 +17,7 @@
 #include "reads.h"
 #include "qualities.h"
 #include "names.h"
+#include "arithmetic.h"
 
 buffered_file file_pool[MAXOPENFILES];  /* handles for files */
 int32_t read_length[2];                 /* length of read in one fastq file */
@@ -49,19 +50,22 @@ int merhamet_merge (int *fl, int flc, int idx) {
 	}
 
 	int32_t bins[MAXMERGE];
-	int minV = MAXBIN;
+	int32_t cores[MAXMERGE];
+	int minV = MAXBIN, minC = MAXBIN;
 	int minI = 0;
 	for (int i = 0; i < flc; i++) { 
 		f_read (file_pool + i + 1, &(bins[i]), sizeof(int32_t));
+		f_read (file_pool + i + 1, &(cores[i]), sizeof(int32_t));
 		if (bins[i] < minV) {
 			minV = bins[i];
+			minC = cores[i];
 			minI = i;
 		}
 	}
 
 	int     binex = flc, metadata_pos = 0;
 	int64_t totalLen = 0;
-	int32_t prevMinV;
+	int32_t prevMinV, prevMinC;
 	while (binex) {
 		int64_t len;
 		for (int i = 0; i <= idx-(idx>3); i++)
@@ -76,19 +80,24 @@ int merhamet_merge (int *fl, int flc, int idx) {
 			f_read (file_pool + minI + 1, &len, sizeof(int64_t));
 
 		prevMinV = minV;
+		prevMinC = minC;
 		minV = MAXBIN;
 		int rd = f_read (file_pool + minI + 1, &(bins[minI]), sizeof(int32_t));
 		if (rd != sizeof(int32_t)) {
 			bins[minI] = MAXBIN;
 			binex--;
 		}
+		else f_read( file_pool + minI + 1, &(cores[minI]), sizeof(int32_t) );
 		for (int i = 0; i < flc; i++) 
 			if (bins[i] < minV) {
 				minV = bins[i];
+				minC = cores[i];
 				minI = i;
 			}
 		if (minV != prevMinV) {
 			memcpy (metadata + metadata_pos, &prevMinV, sizeof(int32_t));
+			metadata_pos += sizeof(int32_t);
+			memcpy (metadata + metadata_pos, &prevMinC, sizeof(int32_t));
 			metadata_pos += sizeof(int32_t) + sizeof(int64_t) * (idx - (idx > 3));
 			memcpy (metadata + metadata_pos, &totalLen, sizeof(int64_t));
 			metadata_pos += sizeof(int64_t) *  (3 + 2 * _use_second_file - idx + (idx > 3));
@@ -106,6 +115,14 @@ int merhamet_merge (int *fl, int flc, int idx) {
 
 	DLOG("OK\n");
 	return metadata_pos;
+}
+
+void WW(uint32_t u,buffered_file *f) {
+	do {
+		uint8_t x=u&0x7f; u>>=7;
+		if(u) x|=0x80;
+		f_write(f,&x,1);
+	}while(u);
 }
 
 int64_t combine_and_compress_with_split (int fl, const char *output, int64_t split_size, int64_t phred_offset) {
@@ -143,7 +160,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 
 	buffered_file foQ, foR, foN;
 
-	f_init (&foQ, _compression_mode);
+	f_init (&foQ, IO_SYS);
 	f_init (&foR, _compression_mode);
 	f_init (&foN, _compression_mode);
 	LOG ("compression: %s\n", 
@@ -160,102 +177,143 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 
 	int64_t new_size = 0;
 
+	uint8_t magic[] = { 's','c','a','l', 'c','e','2','0' };
+
+	uint64_t size;
 	for (int NP = 0; NP < _use_second_file + 1; NP++) {
-		int64_t lR = 0, lQ = 0, lN = 0;
-		char alive = 1;
-		for (int64_t F = 0; alive; F++) {
-			int64_t limit = MIN (split_size, reads_count - F * split_size);
+		Z=NP;
+		int32_t id, core;
+		int64_t lR = 0, lQ = 0, lN = 0, temp;
+		//	char alive = 1;
+		//	for (int64_t F = 0; alive; F++) {
+		//		int64_t limit = MIN (split_size, reads_count - F * split_size);
 
-			snprintf (buffer, MAXLINE, "%s.%02d_%d.scalcen", output, F, NP+1);
-			f_open (&foN, buffer, IO_WRITE);
-			snprintf (buffer, MAXLINE, "%s.%02d_%d.scalceq", output, F, NP+1);
-			f_open (&foQ, buffer, IO_WRITE);
-			snprintf (buffer, MAXLINE, "%s.%02d_%d.scalcer", output, F, NP+1);
-			f_open (&foR, buffer, IO_WRITE);
+		snprintf (buffer, MAXLINE, "%s_%d.scalcen", output, NP+1);
+		f_open (&foN, buffer, IO_WRITE);
+		snprintf (buffer, MAXLINE, "%s_%d.scalceq", output, NP+1);
+		f_open (&foQ, buffer, IO_WRITE);
+		snprintf (buffer, MAXLINE, "%s_%d.scalcer", output, NP+1);
+		f_open (&foR, buffer, IO_WRITE);
 
-			f_write (&foR, read_length + NP, sizeof(int32_t));
-			f_write (&foR, &limit, sizeof(int64_t));
-			f_write (&foQ, &phred_offset, sizeof(int64_t));
-			f_write (&foN, &_use_names, 1);
-			if (!_use_names) {
-				int64_t name_idx = F * split_size;
-				f_write (&foN, &name_idx, sizeof(int64_t));
-				f_write (&foN, _library_name, strlen(_library_name));
-			}
+		f_write (&foR, magic, 8);
+		f_write (&foR, read_length + NP, sizeof(int32_t));
 
-			int64_t reads_written = 0, temp;
-			while (reads_written < split_size) {
-				int64_t num_reads = lR / (SZ_READ (read_length[NP]));
-				if (reads_written + num_reads <= split_size) {
-					// write complete bucket
-					for (int64_t i = 0; i < lR; i += GLOBALBUFSZ) {
-						int64_t r = f_read (fR, global_buffer, MIN (lR - i, GLOBALBUFSZ));
-						f_write (&foR, global_buffer, r);
-					}
-					for (int64_t i = 0; i < lQ; i += GLOBALBUFSZ) {
-						int64_t r = f_read (fQ, global_buffer, MIN (lQ - i, GLOBALBUFSZ));
-						f_write (&foQ, global_buffer, r);
-					}
-					if (_use_names) for (int64_t i = 0; i < lN; i += GLOBALBUFSZ) {
-						int64_t r = f_read (fN, global_buffer, MIN (lN - i, GLOBALBUFSZ));
-						f_write (&foN, global_buffer, r);
-					}
-					reads_written += num_reads;		
-					if (f_read (fM, &lN, sizeof(int32_t)) < sizeof(int32_t)) {
-						alive = 0;
-						break;
-					}
-				
-					f_read (fM, &lN, sizeof(int64_t));
-					f_read (fM, &lR, sizeof(int64_t));
-					f_read (fM, &lQ, sizeof(int64_t));
-					if (_use_second_file) {
-						int64_t *lR2 = (NP ? &lR : &temp);
-						int64_t *lQ2 = (NP ? &lQ : &temp);
-						f_read (fM, lR2, sizeof(int64_t));
-						f_read (fM, lQ2, sizeof(int64_t));
-					} 
-				}
-				else {
-					int64_t left = split_size - reads_written;
-					for (int64_t i = 0; i < left; i++) {
-						int64_t r = f_read (fR, buffer, SZ_READ(read_length[NP]));
-						f_write (&foR, buffer, r);
-					}
-					lR -= left * SZ_READ(read_length[NP]);
-					for (int64_t i = 0; i < left; i++) { 
-						int pos = 0, len = 0;
-						while (len < read_length[NP]) {
-							f_read (fQ, buffer + pos, 1);
-							uint8_t t = buffer[pos];
-							len += (t >= 128 ? t - 128 : 1);
-							pos++;
-						}
-						f_write (&foQ, buffer, pos);
-						lQ -= pos;
-					}
-					if (_use_names) for (int64_t i = 0; i < left; i++) {
-						f_read (fN, buffer, 1);
-						f_read (fN, buffer + 1, buffer[0]);
-						f_write (&foN, buffer, buffer[0] + 1);
-						lN -= (buffer[0] + 1);
-					}
-					reads_written += left;
-				}
-			}
+		f_write (&foQ, magic, 8);
+		f_write (&foQ, &phred_offset, sizeof(int64_t));
+		a_init_coder (&foQ);
 
-			f_close (&foR);
-			f_close (&foN);
-			f_close (&foQ);
-			DLOG("\tCreated part %d (paired-end %d) with %lld reads, files (%s, %s, %s)\n", F, NP, reads_written, foN.file_name, foQ.file_name, foR.file_name);
 
-			// ...
-			struct stat s;
-			stat (foR.file_name, &s); new_size += s.st_size;
-			stat (foQ.file_name, &s); new_size += s.st_size;
-			stat (foN.file_name, &s); new_size += s.st_size;
-
+		f_write (&foN, magic, 8);
+		f_write (&foN, &_use_names, 1);
+		if (!_use_names) {
+			int64_t name_idx = 0; // F * split_size;
+			f_write (&foN, &name_idx, sizeof(int64_t));
+			f_write (&foN, _library_name, strlen(_library_name));
 		}
+		else {
+			f_write(&foN, &sanger, 1);
+			if (sanger) {
+				int l; char *cx;
+			
+				cx = prefix;
+				l = strlen(cx); f_write(&foN, &l, sizeof(int)); f_write(&foN, cx, l);
+				cx = machine_name;
+				l = strlen(cx); f_write(&foN, &l, sizeof(int)); f_write(&foN, cx, l);
+				cx = run_id;
+				l = strlen(cx); f_write(&foN, &l, sizeof(int)); f_write(&foN, cx, l);
+			}
+		}
+
+
+		/* read metadata */
+		while(1){
+		if (f_read (fM, &id, sizeof(int32_t)) != sizeof(int32_t))
+			break;
+		f_read (fM, &core, sizeof(int32_t));
+		//LOG("%d\n",core);
+		f_read (fM, &lN, sizeof(int64_t));
+		f_read (fM, &lR, sizeof(int64_t));
+		f_read (fM, &lQ, sizeof(int64_t));
+		if (_use_second_file) {
+			int64_t *lR2 = (NP ? &lR : &temp);
+			int64_t *lQ2 = (NP ? &lQ : &temp);
+			f_read (fM, lR2, sizeof(int64_t));
+			f_read (fM, lQ2, sizeof(int64_t));
+		}
+
+		if (!NP) {
+			f_write(&foR, &core, sizeof(int32_t));
+			uint64_t size;
+			if (core != MAXBIN - 1) // root or non root
+				size = lR / ( SZ_READ( read_length[0] - strlen(patterns[core]) ) + sizeof(int16_t) );
+			else
+				size = lR / ( SZ_READ(read_length[0])+sizeof(int16_t) );
+			f_write(&foR, &size, sizeof(int64_t));
+		}
+		for (int64_t i = 0; i < lR; i += GLOBALBUFSZ) {
+			int64_t r = f_read (fR, global_buffer, MIN (lR - i, GLOBALBUFSZ));
+			f_write (&foR, global_buffer, r);
+		}
+		for (int64_t i = 0; i < lQ; i += GLOBALBUFSZ) {
+			int64_t r = f_read (fQ, global_buffer, MIN (lQ - i, GLOBALBUFSZ));
+			/*a*/a_write (&foQ, global_buffer, r);
+		}
+		if (_use_names && sanger) {
+			uint32_t n_id = 0, n_lane = 0;
+			for (int64_t nn = 0; nn < lN; ) {
+				uint8_t ll;
+				f_read(fN, &ll, sizeof(uint8_t));
+				f_read(fN, global_buffer, ll);
+				global_buffer[ll]=0;
+				nn += ll + 1;
+
+				char cc[200], cp = 0, ep = 0;
+				for (int i = 0; i <= ll; i++) if (i == ll || global_buffer[i] == ' ' || global_buffer[i] == ':' || global_buffer[i] == '.' || global_buffer[i] == '/') {
+					cc[cp]=0;
+					if (ep == 1) {
+						WW(atoi(cc)-n_id,&foN);
+						if ( core != MAXBIN-1 ) n_id=atoi(cc);
+					}
+					else if (ep == 4) {
+						WW(atoi(cc)-n_lane,&foN);
+						if(core != MAXBIN-1) n_lane=atoi(cc);
+					}
+					else if (ep == 5) {
+						WW(atoi(cc),&foN);	
+					}
+					else if (ep == 6) {
+						WW(atoi(cc),&foN);	
+					}
+ 					
+					cp = 0;
+					ep++;
+				} else cc[cp++]=global_buffer[i];
+
+				//int64_t r = f_read (fN, global_buffer, MIN (lN - i, GLOBALBUFSZ));
+				//f_write (&foN, global_buffer, r);
+			}
+		}
+		else if (_use_names) {
+			for (int64_t i = 0; i < lN; i += GLOBALBUFSZ) {
+				int64_t r = f_read (fN, global_buffer, MIN (lN - i, GLOBALBUFSZ));
+				f_write (&foN, global_buffer, r);
+			}
+		}
+		else;
+		}
+
+		a_finish_coder (&foQ);
+		f_close (&foR);
+		f_close (&foN);
+		f_close (&foQ);
+		DLOG("\tData for paired-end %d with %lld reads in files (%s, %s, %s)\n", NP, reads_written, foN.file_name, foQ.file_name, foR.file_name);
+
+		// ...
+		struct stat s;
+		stat (foR.file_name, &s); new_size += s.st_size;
+		stat (foQ.file_name, &s); new_size += s.st_size;
+		stat (foN.file_name, &s); new_size += s.st_size;
+
 		if (_use_second_file && !NP) {
 			fR = file_pool + 4;
 			fQ = file_pool + 5;
@@ -452,18 +510,26 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 				for (int t = 0; t < d_idx; t++) {
 					uint8_t *out = rdat[t].data;
 
+					int n = aho_search (data[t][0][1], trie, &(buckets[t]));
+
 					int64_t sz = output_name (data[t][0][0], out);
-					sz += output_read        (data[t][0][1], out + sz);
-					sz += output_quality     (data[t][0][2], data[t][0][1], qmap + 0, out + sz);
+					if (n != -1) {
+						sz += output_read (data[t][0][1], out + sz, n-buckets[t]->level+1, buckets[t]->level);
+						rdat[t].end = n-buckets[t]->level+1;
+					}
+					else {
+						sz += output_read (data[t][0][1], out + sz, 0, 0);
+						rdat[t].end = 0; //read_length[0];
+					}
+					sz += output_quality(data[t][0][2], data[t][0][1], qmap + 0, out + sz,0);
 					int64_t of2 = sz;
 					if (_use_second_file || _interleave) {
-						sz += output_read    (data[t][1][1], out + sz);
-						sz += output_quality (data[t][1][2], data[t][1][1], qmap + 1, out + sz);
+						sz += output_read    (data[t][1][1], out + sz, 0, 0);
+						sz += output_quality (data[t][1][2], data[t][1][1], qmap + 1, out + sz,1);
 					}
 
 					rdat[t].of = of2;
 					rdat[t].sz = sz;
-					aho_search (data[t][0][1], trie, &(buckets[t]));
 					aho_trie_bucket (buckets[t], rdat + t);
 
 					total_size += sz + 2 * sizeof(int64_t) + sizeof(struct bin_node*);

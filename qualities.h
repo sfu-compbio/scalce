@@ -12,7 +12,7 @@ typedef struct {
 } quality_mapping;
 
 void quality_mapping_init (quality_mapping *q, buffered_file *f, int *read_length); 
-int output_quality (char *line, char *read, quality_mapping *q, uint8_t *dest);
+int output_quality (char *line, char *read, quality_mapping *q, uint8_t *dest, int ZZ);
 
 #endif // QUALITIES_H__
 

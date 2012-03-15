@@ -1,6 +1,7 @@
 /// 786
 
 #include <cmath>
+#include <cassert>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>

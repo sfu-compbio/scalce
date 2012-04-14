@@ -4,8 +4,8 @@
 #include <inttypes.h>
 #include "arithmetic.h"
 
-static uint32_t hi_fq[2][46*46][46], 
-					 lo_fq[2][46*46][46];
+static uint32_t hi_fq[2][46*46][46],   // 760k 
+					 lo_fq[2][46*46][46];   // 760k
 static uint32_t lo[2], 
 					 hi[2], 
 					 underflow[2],

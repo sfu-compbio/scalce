@@ -7,6 +7,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <inttypes.h>
+#include <sys/types.h>
+#include <sys/sysinfo.h>
+
+void MEM(char *A);
+
 
 #define GLOBALBUFSZ  5*MAXLINE
 #define MIN(x,y)  (((x)<(y))?(x):(y))
@@ -26,7 +31,7 @@
 #define DLOG(...)  ;
 #endif
 #define ERROR(c,...)\
-	{ fprintf (stderr, "(ERROR) "c, ##__VA_ARGS__); abort(); exit (1); }
+	{ fprintf (stderr, "(ERROR) "c, ##__VA_ARGS__); exit (1); }
 
 #define IO_READ  0
 #define IO_WRITE 1
@@ -66,5 +71,8 @@ extern int64_t reads_count;                /* total read count in all input file
 
 int getval (char c);
 char *get_second_file (const char *c);
+void *mallox (size_t size);
+void frex (void *ptr, size_t size);
+double getmemx ();
 
 #endif // CONST_H__

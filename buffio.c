@@ -206,7 +206,7 @@ char* f_gets (buffered_file *f, char *c, int64_t maxsz) {
 
 void f_init (buffered_file *f, int algorithm) { 
 	f->bufsz = _file_buffer_size;
-	f->buffer = malloc (_file_buffer_size);
+	f->buffer = mallox (_file_buffer_size);
 	f->handle = 0;
 	f->mode = f->bufpos = f->bufend = 0;
 
@@ -246,6 +246,6 @@ void f_init (buffered_file *f, int algorithm) {
 
 void f_free (buffered_file *f) {
 	f_close (f);
-	free (f->buffer);
+	frex (f->buffer, _file_buffer_size);
 }
 

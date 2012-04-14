@@ -6,7 +6,7 @@
 #include "const.h"
 #include "buffio.h"
 
-extern char *patterns[5000000];
+char **patterns;
 
 /* read_data - contains all neccessary data for one read (name, quality, read and eventually paired read data */
 typedef struct {

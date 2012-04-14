@@ -7,8 +7,8 @@
 
 extern int Z;
 extern
-uint32_t	ac_freq3[2][46*46],
-		   ac_freq4[2][46*46][46],
+uint32_t	ac_freq3[2][46*46],     // 16K
+		   ac_freq4[2][46*46][46], // 760k
 			ac_sz;
 void a_init_coder (buffered_file *f);
 void a_init_decoder (buffered_file *f);

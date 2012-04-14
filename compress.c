@@ -339,7 +339,8 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 void merge (int total, int param) {
 	char buffer[MAXLINE], buffer2[MAXLINE];
 
-	char *used = calloc (total + 5, sizeof (char));
+	char *used = mallox (total + 5);
+	memset (used, 0, total + 5);
 
 	int found[50];
 	for (;;) {
@@ -378,7 +379,7 @@ void merge (int total, int param) {
 			break;
 	}
 
-	free (used);
+	frex (used, total + 5);
 }
 
 void dump_trie (int fl, aho_trie *t) {
@@ -427,10 +428,12 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 	LOG("Buffer size: %lldK, bucket storage size: %lldK\n", _file_buffer_size/1024, _max_bucket_set_size/1024);
 
+
 	/* initialize the trie */
 	DLOG ("Reading core strings ... ");
 	aho_trie *trie = read_patterns ();
 	DLOG ("OK\n");
+
 
 	/* initialize basic variables */
 	LOG ("Preprocessing FASTQ files ...\n");
@@ -442,16 +445,16 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	if (_interleave)             /* all auxiliray functions will behave as in second file mode */
 		_use_second_file = 1;
 
-	aho_trie **buckets = malloc (_thread_count * sizeof(aho_trie*));
-	char ****data = malloc (_thread_count * sizeof(char*));
-	read_data *rdat = malloc (_thread_count * sizeof (read_data));
+	aho_trie **buckets = mallox (_thread_count * sizeof(aho_trie*));
+	char ****data = mallox (_thread_count * sizeof(char*));
+	read_data *rdat = mallox (_thread_count * sizeof (read_data));
 	for(int t = 0; t < _thread_count; t++) {
-		rdat[t].data = malloc (5 * MAXLINE);
-		data[t] = malloc (2 * sizeof(char*));
-		data[t][0] = malloc (3 * sizeof (char*));
-		data[t][1] = malloc (3 * sizeof (char*));
+		rdat[t].data = mallox (5 * MAXLINE);
+		data[t] = mallox (2 * sizeof(char*));
+		data[t][0] = mallox (3 * sizeof (char*));
+		data[t][1] = mallox (3 * sizeof (char*));
 		for (int i=0; i<6; i++)
-			data[t][i/3][i%3] = malloc (MAXLINE * sizeof (char));
+			data[t][i/3][i%3] = mallox (MAXLINE * sizeof (char));
 	}
 
 	/* initialize the files */
@@ -484,6 +487,10 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 		int64_t file_reads = 0;  /* read count for this file */
 
+
+		LOG("Memory alloc'd: %.2lf\n", getmemx());
+
+
 		int d_idx = 0; 
 		char done = 0;
 		while (1) {
@@ -506,7 +513,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 			}
 
 			if (d_idx == _thread_count || done) {
-				#pragma omp parallel for reduction(+:total_size) num_threads(_thread_count) 
+				//#pragma omp parallel for reduction(+:total_size) num_threads(_thread_count) 
 				for (int t = 0; t < d_idx; t++) {
 					uint8_t *out = rdat[t].data;
 
@@ -532,7 +539,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 					rdat[t].sz = sz;
 					aho_trie_bucket (buckets[t], rdat + t);
 
-					total_size += sz + 2 * sizeof(int64_t) + sizeof(struct bin_node*);
+					total_size += sz + sizeof(read_data) + sizeof(struct bin_node*);
 				}
 				
 				reads_count += d_idx;
@@ -541,7 +548,9 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 				if (total_size >= _max_bucket_set_size) {
 					total_size = 0;
+			LOG("> Memory alloc'd: %.2lf\n", getmemx());
 					dump_trie (temp_file_count++, trie);
+			LOG("< Memory alloc'd: %.2lf\n", getmemx());
 				}
 			}
 
@@ -556,17 +565,22 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	}
 
 	/* clean all stuff */
+	LOG("> Memory alloc'd: %.2lf\n", getmemx());
 	if (total_size)
 		dump_trie (temp_file_count++, trie);
+	LOG("< Memory alloc'd: %.2lf\n", getmemx());
 	for (int fi = 0; fi < use_only_second_file + 1; fi++)
 		f_free (f + fi);
 	DLOG("\tDone!\n");
+
+
 
 	/* merge */
 	LOG("Merging results ...\n");
 	merge (temp_file_count, 8);
 
 	/* compress and output */
+	LOG("Doing something crazy...\n");
 	int scalce_preprocessing_time = TIME;
 	int64_t new_size = combine_and_compress_with_split (temp_file_count-1, output, (_split_reads ? _split_reads : reads_count), qmap[0].offset);
 

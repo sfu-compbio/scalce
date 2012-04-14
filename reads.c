@@ -1,5 +1,6 @@
 /// 786
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,8 +9,8 @@
 #include "reads.h"
 #include "const.h"
 
-char *patterns[5000000];
-static int  pattern_c = 0;
+char **patterns;
+static int pattern_c = 0;
 
 void bin_prepare (aho_trie *t);
 
@@ -21,12 +22,12 @@ void bin_init (bin *b) {
 
 /* insert read_data into bin (linked list) */
 void bin_insert (bin *b, read_data *d) {
-	bin_node *n  = malloc (sizeof (struct bin_node));
+	bin_node *n  = mallox (sizeof (struct bin_node));
 	n->data.sz   = d->sz;
 	n->next      = 0;
 	n->data.of   = d->of;
 	n->data.end  = d->end;
-	n->data.data = malloc (d->sz * sizeof (uint8_t));
+	n->data.data = mallox (d->sz * sizeof (uint8_t));
 	memcpy (n->data.data, d->data, d->sz);
 
 	#pragma omp critical 
@@ -45,7 +46,10 @@ void bin_insert (bin *b, read_data *d) {
 void bin_free (bin *b) {
 	if (b->size) for (bin_node *n = b->first; n; ) {
 		bin_node *x = n->next;
-		free (n);
+
+		frex(n->data.data, sizeof(uint8_t)*n->data.sz);
+		frex(n, sizeof(struct bin_node));
+
 		n = x;
 	}
 	b->first = b->last = 0;
@@ -78,7 +82,6 @@ void bin_dump (aho_trie *t, buffered_file *f) {
 			nQ2 = f_write (f + 5, r->data + r->of + nR2, r->sz - (r->of + nR2));
 		}
 		tN += nN; tQ += nQ; tR += nR + sizeof(int16_t); tR2 += nR2; tQ2 += nQ2;
-		free (r->data);
 	}
 	bin_free (&(t->bin));
 	
@@ -110,7 +113,7 @@ struct trie_queue {
 
 /* queue initialization */
 void trie_queue_init (trie_queue *q, int sz) {
-	q->data = malloc (sz * sizeof (struct aho_trie*));
+	q->data = mallox (sz * sizeof (struct aho_trie*));
 	q->sz = sz;
 	q->start = q->end = q->size = 0;
 }
@@ -132,7 +135,7 @@ aho_trie *trie_queue_pop (trie_queue *q) {
 
 /* safely dispose queue */
 void trie_queue_free (trie_queue *q) {
-	free (q->data);
+	frex(q->data, q->sz*sizeof(struct aho_trie*));
 }
 
 char *visited    = 0;  /* visited flags for bfs traversal */
@@ -166,7 +169,7 @@ void pattern_insert (char *c, aho_trie *n, int level, int id) {
 	if (*c != 0 && *c != '\n') {
 		char cx = getval (*c);
 		if (n->child[cx] == 0) {
-			n->child[cx] = malloc (sizeof (struct aho_trie));
+			n->child[cx] = mallox (sizeof (struct aho_trie));
 			aho_trie_init (n->child[cx]);
 			n->child[cx]->level = level + 1;
 			nodes_count++;
@@ -227,7 +230,7 @@ void prepare_aho_automata (aho_trie *root) {
 	}
 
 	trie_queue_free (&q);
-	visited = malloc (nodes_count * sizeof (char));
+	visited = mallox (nodes_count * sizeof (char));
 }
 
 /* read core strings and create trie and aho automaton */
@@ -235,10 +238,15 @@ extern char _binary_patterns_bin_start;
 extern char _binary_patterns_bin_end;
 extern char _binary_patterns_bin_size;
 aho_trie *read_patterns () {
-	aho_trie *root = malloc (sizeof (struct aho_trie));
+	aho_trie *root = mallox (sizeof (struct aho_trie));
 	aho_trie_init (root);
 	char line[MAXLINE];
 	char alphabet[] = "ACGT";
+
+	patterns = mallox(5000000*sizeof(char*));
+	for(int i=0;i<5000000;i++)
+		patterns[i]=mallox(15);
+
 
 	char *data = &_binary_patterns_bin_start;
 	int pos = 0;
@@ -259,9 +267,10 @@ aho_trie *read_patterns () {
 		for(int i = 0; i < cnt; i++) {
 			int nl = 0;
 			memcpy (&x, data + pos, sz);
+			assert(sz<=8);
 			pos += sz;
 			
-			patterns[pattern_c] = malloc( ln );
+//			patterns[pattern_c] = mallox( ln );
 			for(int j = ln - 1; j >= 0; j--)
 				patterns[pattern_c][nl++] = alphabet[ (x >> (2 * j)) & 3 ];
 			patterns[pattern_c][nl++] = 0;
@@ -375,7 +384,8 @@ void aho_trie_free (aho_trie *t) {
 	trie_queue_init (&q, nodes_count + 1);
 	trie_queue_push (&q, t);
 
-	aho_trie **p = calloc (nodes_count, sizeof (struct aho_trie*));
+	aho_trie **p = mallox (nodes_count * sizeof (struct aho_trie*));
+	memset(p, 0, nodes_count*sizeof(struct aho_trie*));
 	p[t->id] = t;
 
 	while (q.size) {
@@ -389,13 +399,14 @@ void aho_trie_free (aho_trie *t) {
 	for (int i = 0; i < nodes_count; i++) if (p[i]) {
 		bin_free (&(p[i]->bin));
 		if (p[i]->output >= 0 && patterns[p[i]->output]) {
-			free(patterns[p[i]->output]);
+			frex(patterns[p[i]->output], 15);
 			patterns[p[i]->output] = 0;
 		}
-		free (p[i]);
+		frex(p[i], sizeof(struct aho_trie));
 	}
-	free (visited);
-	free (p);
+	frex(visited, nodes_count);
+	frex(p, nodes_count * sizeof(struct aho_trie*));
+	frex(patterns, sizeof(char*)*5000000);
 }
 
 
@@ -455,14 +466,14 @@ void bin_prepare (aho_trie *t) {
 
 	if (_allocd == 0 && b->size < 10000) {
 		_allocd = 10000;
-		_temp = malloc (_allocd * sizeof(bin_node*));
-		_nodes = malloc (_allocd * sizeof(bin_node*));
+		_temp = mallox (_allocd * sizeof(bin_node*));
+		_nodes = mallox (_allocd * sizeof(bin_node*));
 	}
 	else if (b->size > _allocd) {
-		free(_temp);
-		free(_nodes);
-		_temp = malloc (b->size * sizeof(bin_node*));
-		_nodes = malloc (b->size * sizeof(bin_node*));
+		frex(_temp, _allocd*sizeof(bin_node*));
+		frex(_nodes, _allocd*sizeof(bin_node*));
+		_temp = mallox (b->size * sizeof(bin_node*));
+		_nodes = mallox (b->size * sizeof(bin_node*));
 		_allocd=b->size;
 	}
 	_bin_sz = 0;

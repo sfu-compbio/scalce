@@ -2,240 +2,308 @@
 
 #include <assert.h>
 #include <inttypes.h>
+#include <string.h>
+#include <pthread.h>
 #include "arithmetic.h"
 
-static uint32_t hi_fq[2][46*46][46],   // 760k 
-					 lo_fq[2][46*46][46];   // 760k
-static uint32_t lo[2], 
-					 hi[2], 
-					 underflow[2],
-					 code[2],
-					 prev[2][3];
+const int num_threads = 4;
+const int buffer_size = 1024 * 1024;
+uint32_t ac_freq3[2][AC_DEPTH*AC_DEPTH],
+		   ac_freq4[2][AC_DEPTH*AC_DEPTH*AC_DEPTH];
 
-/* bit i/o routines */
-static uint8_t  buffer[2];
-static int      buf_pos[2];
+/*******************************************/
 
-int Z=0;
+ac_stat::ac_stat (uint32_t *a3, uint32_t *a4) {
+	acfq3 = a3;
+	acfq4 = a4;
 
-uint8_t I (buffered_file *f) {
-	uint8_t c = (buffer[Z] >> buf_pos[Z]) & 1;
-	if (!buf_pos[Z]) {
-		if (f_read(f, &buffer[Z], 1) != 1)
-			buffer[Z] = 0;
-		buf_pos[Z] = 7;
-	}
-	else buf_pos[Z]--;
-	return (c ? 1 : 0);
-}
-
-void O (buffered_file *f, int t) {
-	buffer[Z] <<= 1;
-	if (t) buffer[Z] |= 1;
-	if (buf_pos[Z] == 0) {
-		f_write (f, &buffer[Z], sizeof(uint8_t));
-		buf_pos[Z] = 7;
-		buffer[Z] = 0;
-	}
-	else --buf_pos[Z];
-}
-
-/* initialization */
-void a_init_coder (buffered_file *f) {
-//	double ratio = 1;
-//	LOG("%llu --",ac_sz);
-//	if (ac_sz >= (1ll << 32))
-//		ratio = ((1ll << 32) - 256*256 - 5) / (double)(ac_sz);
-//	ac_sz *= ratio;
-/*
-	for (int i = 0; i < 256; i++) {
-//		ac_freq1[i] *= ratio;
-//		ac_freq1[i] += 256;
-//		ac_sz += 256;
-		ac_freq1[i] = 0;
-		for (int j = 0; j < 256; j++) {
-			ac_freq2[i * 256 + j] *= ratio;
-			ac_freq2[i * 256 + j] ++;
-			ac_freq1[i] += ac_freq2[i*256+j];
+	for (int i = 0; i < AC_DEPTH; i++) {
+		for (int j = 0; j < AC_DEPTH; j++) {
+			hi_fq[i*AC_DEPTH + j][0] = acfq4[(i*AC_DEPTH + j)*AC_DEPTH+0];
+			for (int l = 1; l < AC_DEPTH; l++) 
+				hi_fq[i*AC_DEPTH + j][l] = hi_fq[i*AC_DEPTH + j][l - 1] + acfq4[(i*AC_DEPTH + j)*AC_DEPTH+l];
+			acfq3[i*AC_DEPTH + j] = hi_fq[i*AC_DEPTH + j][AC_DEPTH - 1];
+			int p = -1;
+			for (int l = 0; l < AC_DEPTH; l++) if (acfq4[(i*AC_DEPTH + j)*AC_DEPTH+l]) {
+				if (p != -1) 
+					lo_fq[i*AC_DEPTH + j][l] = hi_fq[i*AC_DEPTH + j][p];
+				p = l;
+			}
 		}
 	}
-*/
-	for (int i = 0; i < 46; i++) {
-		for (int j = 0; j < 46; j++) {
-				hi_fq[Z][i*46 + j][0] = ac_freq4[Z][i*46 + j][0];
-				for (int l = 1; l < 46; l++) 
-					hi_fq[Z][i*46 + j][l] = hi_fq[Z][i*46 + j][l - 1] + ac_freq4[Z][i*46 + j][l];
-				ac_freq3[Z][i*46 + j] = hi_fq[Z][i*46 + j][45];
-				int p = -1;
-				for (int l = 0; l < 46; l++) if (ac_freq4[Z][i*46 + j][l]) {
-					if (p != -1) 
-						lo_fq[Z][i*46 + j][l] = hi_fq[Z][i*46 + j][p];
-					p = l;
-				}
-		}
-	}
-
-	for (int i = 0; i < 46; i++) 
-		for (int j = 0; j < 46; j++) 
-			for (int k = 0; k < 46; k++) 
-				f_write(f, &ac_freq4[Z][i*46 + j][k], sizeof(uint32_t));	
-
-	lo[Z] = 0;
-	hi[Z] = -1;
-	underflow[Z] = 0;
-	prev[Z][0] = prev[Z][1] = prev[Z][2] = 500;	
-	buffer[Z] = 0;
-	buf_pos[Z] = 7;
-	//LOG("----");
 }
 
-void a_write (buffered_file *f, uint8_t *arr, int sz) {
+/****************************************/
+
+ac_coder::ac_coder (uint8_t *ou, ac_stat *as)
+	: ou(ou), as(as), os(ou) 
+{
+	reset();
+}
+void ac_coder::reset () {
+	lo = 0;
+	hi = -1;
+	underflow = 0;
+	prev[0] = prev[1] = prev[2] = 500; // molim?!	
+	ou = os;
+	buf_pos = 7;
+}
+
+void ac_coder::O (int t) {
+	*ou <<= 1;
+	if (t) *ou |= 1;
+	if (buf_pos == 0) {
+		ou++;
+		assert(ou-os < buffer_size);
+		buf_pos = 7;
+		*ou = 0;
+	}
+	else --buf_pos;
+}
+
+void ac_coder::write (uint8_t *arr, int sz) {
 	int i = 0;
-	if (prev[Z][0] > 255) { // first 3 char hack
-		f_write (f, &arr[0], sizeof(uint8_t));
-		f_write (f, &arr[1], sizeof(uint8_t));
-//		f_write (f, &arr[2], sizeof(uint8_t));
-		prev[Z][0] = arr[0];
-		prev[Z][1] = arr[1];
-//		prev[Z][2] = arr[2];
+	if (prev[0] > 255) { 
+		*ou = arr[0]; ou++;
+		*ou = arr[1]; ou++;
+		prev[0] = arr[0];
+		prev[1] = arr[1];
 		i = 2;
 	}
 	for (; i < sz; i++) {
-		uint32_t c_lo = lo_fq[Z][prev[Z][0]*46 + prev[Z][1]][arr[i]],
-					c_hi = hi_fq[Z][prev[Z][0]*46 + prev[Z][1]][arr[i]],
-					p_sz = ac_freq3[Z][prev[Z][0]*46 + prev[Z][1]];
-		uint64_t range = hi[Z] - lo[Z] + 1LL;
-		hi[Z] = lo[Z] + (range * c_hi) / p_sz - 1;
-		lo[Z] = lo[Z] + (range * c_lo) / p_sz;
+		uint32_t c_lo = as->lo_fq[prev[0]*AC_DEPTH + prev[1]][arr[i]],
+					c_hi = as->hi_fq[prev[0]*AC_DEPTH + prev[1]][arr[i]],
+					p_sz = as->acfq3[prev[0]*AC_DEPTH + prev[1]];
+		uint64_t range = hi - lo + 1LL;
+		hi = lo + (range * c_hi) / p_sz - 1;
+		lo = lo + (range * c_lo) / p_sz;
 
 		while (1) {
-			if ((hi[Z] & 0x80000000) == (lo[Z] & 0x80000000)) {
-				O (f, hi[Z] & 0x80000000);
-				while (underflow[Z]) {
-					O (f, ~hi[Z] & 0x80000000); 
-					underflow[Z]--;
+			if ((hi & 0x80000000) == (lo & 0x80000000)) {
+				O (hi & 0x80000000);
+				while (underflow) {
+					O (~hi & 0x80000000); 
+					underflow--;
 				}
 			}
-			else if (!(hi[Z] & 0x40000000) && (lo[Z] & 0x40000000)) { // underflow[Z] ante portas
-				underflow[Z]++;
-				lo[Z] &= 0x3fffffff; // set 2nd highest digit to 0 -- 1st will be removed after
-				hi[Z] |= 0x40000000; // set 2nd highest digit to 1
+			else if (!(hi & 0x40000000) && (lo & 0x40000000)) { // underflow ante portas
+				underflow++;
+				lo &= 0x3fffffff; // set 2nd highest digit to 0 -- 1st will be removed after
+				hi |= 0x40000000; // set 2nd highest digit to 1
 			}
 			else break;
 
-			lo[Z] <<= 1;
-			hi[Z] <<= 1; hi[Z] |= 1;
+			lo <<= 1;
+			hi <<= 1; hi |= 1;
 		}
-	
-		prev[Z][0] = prev[Z][1];
-	//	prev[Z][1] = prev[Z][2];
-		prev[Z][1] = arr[i];
+
+		prev[0] = prev[1];
+		prev[1] = arr[i];
 	}
 }
 
-void a_finish_coder (buffered_file *f) {
-	O (f, lo[Z] & 0x40000000);
-	underflow[Z]++;
-	while (underflow[Z]) {
-		O (f, ~lo[Z] & 0x40000000);
-		underflow[Z]--;
+void ac_coder::flush () {
+	O (lo & 0x40000000);
+	underflow++;
+	while (underflow) {
+		O (~lo & 0x40000000);
+		underflow--;
 	}
-	while (buf_pos[Z] != 7)
-		O (f, 0);
+	while (buf_pos != 7)
+		O (0);
 }
 
+/***************************/
 
-void a_init_decoder (buffered_file *f) {
-	for (int i = 0; i < 46; i++) 
-		for (int j = 0; j < 46; j++) 
-			for (int k = 0; k < 46; k++) 
-				f_read(f, &ac_freq4[Z][i*46 + j][k], sizeof(uint32_t));	
-
-	for (int i = 0; i < 46; i++) {
-		for (int j = 0; j < 46; j++) {
-				hi_fq[Z][i*46 + j][0] = ac_freq4[Z][i*46 + j][0];
-				for (int l = 1; l < 46; l++) 
-					hi_fq[Z][i*46 + j][l] = hi_fq[Z][i*46 + j][l - 1] + ac_freq4[Z][i*46 + j][l];
-				ac_freq3[Z][i*46 + j] = hi_fq[Z][i*46 + j][45];
-				int p = -1;
-				for (int l = 0; l < 46; l++) if (ac_freq4[Z][i*46 + j][l]) {
-					if (p != -1) 
-						lo_fq[Z][i*46 + j][l] = hi_fq[Z][i*46 + j][p];
-					p = l;
-				}
-			
-		}
-	}
-
-	//f_read(f, &prev[Z], sizeof(uint8_t));
-	prev[Z][0] = prev[Z][1] = prev[Z][2] = 500;	
-	lo[Z] = 0;
-	hi[Z] = -1;
+ac_decoder::ac_decoder(ac_stat *as, uint8_t *in)
+	: as(as), in(in), is(in)
+{
+	reset();
 }
 
-uint8_t a_read_single (buffered_file *f) {
+uint8_t ac_decoder::I() {
+	uint8_t c = ((*in) >> buf_pos) & 1;
+	if (!buf_pos) {
+		in++;
+		assert(in-is < buffer_size);
+//		if (f_read(fi, &buffer[Z], 1) != 1)
+//			buffer[Z] = 0;
+		buf_pos = 7;
+	}
+	else buf_pos--;
+	return (c ? 1 : 0);
+}
+
+void ac_decoder::reset() {
+	lo = 0;
+	hi = -1;
+	prev[0] = prev[1] = prev[2] = 500;
+	in = is;
+}
+
+uint8_t ac_decoder::read_single() {
 	uint8_t c = 0;
-
-	uint64_t range = hi[Z] - lo[Z] + 1LL;
-	uint32_t count = ((code[Z] - lo[Z] + 1LL) * 
-			ac_freq3[Z][prev[Z][0]*46 + prev[Z][1]] - 1LL) / range;
+	uint64_t range = hi - lo + 1LL;
+	uint32_t count = ((code - lo + 1LL) * as->acfq3[prev[0]*AC_DEPTH + prev[1]] - 1LL) / range;
 
 	uint32_t i;
-	for (i = 0; i < 46; i++) 
-		if (ac_freq4[Z][prev[Z][0]*46 + prev[Z][1]][i] 
-				&& count >= lo_fq[Z][prev[Z][0]*46 + prev[Z][1]][i] 
-				&& count <  hi_fq[Z][prev[Z][0]*46 + prev[Z][1]][i]) 
+	for (i = 0; i < AC_DEPTH; i++) 
+		if (as->acfq4[(prev[0]*AC_DEPTH + prev[1]) * AC_DEPTH + i] 
+				&& count >= as->lo_fq[prev[0]*AC_DEPTH + prev[1]][i] 
+				&& count <  as->hi_fq[prev[0]*AC_DEPTH + prev[1]][i]) 
 			break;
-//	if(i>=46) {
-	//	LOG("\n\n %u %u[%c%c%c] ", count, hi_fq[Z][prev[Z][0]*46*46+prev[Z][1]*46+prev[Z][2]][45],prev[Z][0]+'!',prev[Z][1]+'!',prev[Z][2]+'!');
-//	}
-	assert(i<46);
+	assert(i<AC_DEPTH);
 
-	hi[Z] = lo[Z] + (range * hi_fq[Z][prev[Z][0]*46 + prev[Z][1]][i]) / ac_freq3[Z][prev[Z][0]*46 + prev[Z][1]] - 1;
-	lo[Z] = lo[Z] + (range * lo_fq[Z][prev[Z][0]*46 + prev[Z][1]][i]) / ac_freq3[Z][prev[Z][0]*46 + prev[Z][1]];
+	hi = lo + (range * as->hi_fq[prev[0]*AC_DEPTH + prev[1]][i]) / as->acfq3[prev[0]*AC_DEPTH + prev[1]] - 1;
+	lo = lo + (range * as->lo_fq[prev[0]*AC_DEPTH + prev[1]][i]) / as->acfq3[prev[0]*AC_DEPTH + prev[1]];
 	while (1) {
-		if ((hi[Z] & 0x80000000) == (lo[Z] & 0x80000000)) ;
-		else if (!(hi[Z] & 0x40000000) && (lo[Z] & 0x40000000)) { // underflow[Z] ante portas
-			code[Z] ^= 0x40000000;
-			lo[Z]   &= 0x3fffffff; 
-			hi[Z]   |= 0x40000000; 
+		if ((hi & 0x80000000) == (lo & 0x80000000)) ;
+		else if (!(hi & 0x40000000) && (lo & 0x40000000)) { // underflow ante portas
+			code ^= 0x40000000;
+			lo   &= 0x3fffffff; 
+			hi   |= 0x40000000; 
 		}
 		else break;
-
-		lo[Z] <<= 1;
-		hi[Z] <<= 1; hi[Z] |= 1;
-		code[Z] <<= 1; code[Z] |= I(f);
+		lo <<= 1;
+		hi <<= 1; hi |= 1;
+		code <<= 1; code |= I();
 	}
 
-	prev[Z][0] = prev[Z][1];
-//	prev[Z][1] = prev[Z][2];
-	prev[Z][1] = i;
-
-//	LOG("%c",i+'!');
+	prev[0] = prev[1];
+	prev[1] = i;
 	return i;
 }
 
-void a_read (buffered_file *f, uint8_t *ar, int sz) {
+void ac_decoder::read(uint8_t *ar, int sz) {
 	int i = 0;
-	if (prev[Z][0] > 255) {
-		f_read(f, &ar[0], sizeof(uint8_t));
-		f_read(f, &ar[1], sizeof(uint8_t));
-		//f_read(f, &ar[2], sizeof(uint8_t));
-		prev[Z][0] = ar[0];
-		prev[Z][1] = ar[1];
-		//prev[Z][2] = ar[2];
+	if (prev[0] > 255) {
+		ar[0] = *in; in++;
+		ar[1] = *in; in++;
+		prev[0] = ar[0];
+		prev[1] = ar[1];
 		i = 2;
 
-		f_read(f, &buffer[Z], sizeof(uint8_t));
-		buf_pos[Z] = 7;
-		code[Z] = 0;
+		// f_read(f, &buffer, sizeof(uint8_t));
+		buf_pos = 7;
+		code = 0;
 		for (int j = 0; j < 32; j++) {
-			code[Z] <<= 1;
-			code[Z] |= I(f);
+			code <<= 1;
+			code |= I();
 		}
 	} 
 
 	for (; i < sz; i++)
-		ar[i] = a_read_single(f);
+		ar[i] = read_single();
 }
 
+/****************************/
+
+static pthread_t threads[num_threads];
+static uint8_t  input[num_threads * buffer_size],
+		   output[num_threads * buffer_size];
+static uint32_t input_size[num_threads],
+		   output_size[num_threads];
+static int thread_index[] = { 0, 1, 2, 3 };
+
+ac_stat as;
+
+void set_ac_stat(uint32_t *a3, uint32_t *a4) {
+	as = ac_stat(a3,a4);
+}
+
+void *thread_c (void *tv) {
+	int tx = *((int*)tv);
+	ac_coder ax(output + tx * buffer_size, &as);
+	ax.write(input + tx * buffer_size, input_size[tx]);
+	ax.flush();
+	output_size[tx] = ax.output() - (output + tx * buffer_size);
+	return 0;
+}
+
+void *thread_d (void *tv) {
+	int tx = *((int*)tv);
+	ac_decoder ad(&as, input + tx * buffer_size);
+	ad.read(output + tx * buffer_size, output_size[tx]);
+//	for(int i=0;i<output_size[tx];i++) 
+//		output[buffer_size*tx+i]+='!';
+	return 0;
+}
+
+/****************************/
+void ac_write (buffered_file *fo, uint8_t *data, int size) {
+	static int current_position = 0;
+	if (!size) { // flush
+		int l_th = current_position / buffer_size;
+		for (int i = 0; i < l_th; i++) {
+			input_size[i] = buffer_size;
+			pthread_create(&threads[i], 0, thread_c, (void*) &thread_index[i]);
+		}
+		if (current_position % buffer_size != 0) {
+			input_size[l_th] = current_position % buffer_size;
+			pthread_create(&threads[l_th], 0, thread_c, (void*) &thread_index[l_th]);
+			l_th++;
+		}
+
+		for (int i = 0; i < l_th; i++) {
+			pthread_join (threads[i], 0);
+			f_write(fo, &output_size[i], sizeof(uint32_t));
+			f_write(fo, output + i * buffer_size, output_size[i]);
+		}
+		current_position = 0;
+		return;
+	}
+
+	int offset = 0;
+	while (size != offset) {
+		int w = num_threads * buffer_size - current_position;
+		if (size-offset < w) w = size-offset;
+		memcpy(input + current_position, data + offset, w);
+		if (current_position + w == buffer_size * num_threads) {
+			for (int i = 0; i < num_threads; i++) { 
+				input_size[i] = buffer_size;
+				pthread_create(&threads[i], 0, thread_c, (void*) &thread_index[i]);
+			}
+			for (int i = 0; i < num_threads; i++) {
+				pthread_join (threads[i], 0);
+				f_write(fo, &output_size[i], sizeof(uint32_t));
+				f_write(fo, output + i * buffer_size, output_size[i]);
+			}
+			current_position = 0;
+		}
+		else current_position += w;
+		offset += w;
+	}
+}
+
+void ac_read (buffered_file *fi, uint8_t *data, int size) {
+	static uint64_t f_sz = 0;
+	static int current_position = 0;
+
+	int offset = 0, w;
+	if (!size) goto x;
+	while (offset != size) {
+	  	w = num_threads * buffer_size - current_position;
+		if (size-offset < w) w = size-offset;
+		memcpy(data + offset, output + current_position, w);
+		if (current_position + w == buffer_size * num_threads) {
+x:
+			if (!size) f_read(fi, &f_sz, sizeof(uint64_t));
+			int ct = 0;
+			for (; ct < num_threads; ct++) {
+				if (!f_read(fi, &input_size[ct], sizeof(int)))
+					break;
+				f_read(fi, input + ct * buffer_size, input_size[ct]);
+				output_size[ct] = buffer_size < f_sz ? buffer_size : f_sz;
+				f_sz -= output_size[ct];
+			}
+			for (int i = 0; i < ct; i++)
+				pthread_create(&threads[i], 0, thread_d, (void*) &thread_index[i]);
+			for (int i = 0; i < ct; i++) 
+				pthread_join (threads[i], 0);
+			current_position = 0;
+			if (!size) return;
+		}
+		else current_position += w;
+		offset += w;
+	}
+}

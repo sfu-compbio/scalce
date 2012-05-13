@@ -42,9 +42,9 @@ void decompress (const char *path, const char *out) {
 
 	buffered_file fR[2], fQ[2], fN[2];
 
-	strncpy (buffer, path, MAXLINE);
+	strncpy ((char*)buffer, (char*)path, MAXLINE);
 	for (int i = 0; i < 1 + (_use_second_file|_interleave); i++) {
-	/* file type detection */
+		/* file type detection */
 		get_file_name ((char*)buffer, 'r');          
 		FILE *ft = fopen ((char*)buffer, "rb");
 		fread (c, 1, 2, ft);
@@ -55,13 +55,13 @@ void decompress (const char *path, const char *out) {
 			mode = IO_BZIP;
 		fclose (ft);
 		LOG("Paired-end %d, file format detected: %s\n",i,(mode==IO_GZIP?"gzip":(mode==IO_BZIP?"bzip":"plain")));
-		
-	/* initialization */
+
+		/* initialization */
 		f_init (fR + i, mode);
 		f_init (fQ + i, IO_SYS);
 		f_init (fN + i, mode);
 
-	/* open read, name and quality file */
+		/* open read, name and quality file */
 		get_file_name ((char*)buffer, 'r');
 		f_open (fR + i, (char*)buffer, IO_READ);
 		if (!f_alive (fR + i)) 
@@ -75,21 +75,24 @@ void decompress (const char *path, const char *out) {
 		if (!f_alive (fN + i) && _use_names) 
 			ERROR("Cannot find name file %s! Use -n parameter if you want to skip name file lookup.\n", buffer);
 
-	/* read magic */
+		/* read magic */
 		f_read (fR+i, buffer, 8);
 		f_read (fQ+i, buffer, 8);
 		f_read (fN+i, buffer, 8);
-	/* read metadata */
+		/* read metadata */
 		f_read (fR+i, len+i, sizeof(int32_t));
 		f_read (fQ+i, phredOff+i, sizeof(int64_t));
-		Z=i; a_init_decoder (fQ + i);
+		for (int x = 0; x < AC_DEPTH; x++) // write stat stuff
+			for (int j = 0; j < AC_DEPTH; j++) 
+				for (int k = 0; k < AC_DEPTH; k++) 
+					f_read(fQ+i, &ac_freq4[i][(x*AC_DEPTH + j)*AC_DEPTH+k], sizeof(uint32_t));	
 
-		if (!i) strncpy (buffer, get_second_file (path), MAXLINE);
+		if (!i) strncpy ((char*)buffer, get_second_file (path), MAXLINE);
 	}
 	if (!_use_names)
 		LOG ("Using library name %s\n", _library_name);
-	if ((_interleave|_use_second_file) && nl[1] != nl[0])
-		ERROR("Paired-ends do not have the same number of reads.\n");
+	//if ((_interleave|_use_second_file) && nl[1] != nl[0])
+	//	ERROR("Paired-ends do not have the same number of reads.\n");
 
 	/* prepare output files */
 	buffered_file fo[2], *pfo[2];
@@ -97,9 +100,9 @@ void decompress (const char *path, const char *out) {
 	for (int i = 0; i < 1 + _use_second_file; i++) {
 		f_init (fo + i, IO_SYS);
 		pfo[i] = fo + i;
-	
-	//	if (_split_reads)
-	//		snprintf((char*)buffer, MAXLINE, "%s_%d.part%02d.fastq", out,i+1, file++);
+
+		//	if (_split_reads)
+		//		snprintf((char*)buffer, MAXLINE, "%s_%d.part%02d.fastq", out,i+1, file++);
 		if (_interleave && !strcmp("-",out))
 			snprintf((char*)buffer, MAXLINE, "-");
 		else
@@ -110,11 +113,11 @@ void decompress (const char *path, const char *out) {
 		pfo[1] = fo;
 
 	int bc[2]; bc[0] = SZ_QUAL(len[0]); bc[1] = SZ_QUAL(len[1]);
-//	LOG("--->%d\n",bc[0]);
+	//	LOG("--->%d\n",bc[0]);
 	char alphabet[] = "ACGT";
 	uint8_t l[MAXLINE], o[MAXLINE], ox[MAXLINE], chr, off;
 	char names = 0; int64_t nameidx = 0;
-	int64_t limit = (_split_reads ? _split_reads : nl[0]);
+//	int64_t limit = (_split_reads ? _split_reads : nl[0]);
 	char library[MAXLINE+1];
 	if (!_use_names) {
 		strncpy (library, _library_name, MAXLINE);
@@ -137,35 +140,42 @@ void decompress (const char *path, const char *out) {
 		}
 		else {
 			for(int ee=0;ee<(_use_second_file|_interleave)+1;ee++) {
-			f_read(fN+ee, &sanger, 1);
-			if (sanger) {
-				int l;
-				f_read(fN+ee, &l, sizeof(int)); f_read(fN+ee,prefix,l);prefix[l]=0;
-				f_read(fN+ee, &l, sizeof(int)); f_read(fN+ee,machine_name,l); machine_name[l]=0;
-				f_read(fN+ee, &l, sizeof(int)); f_read(fN+ee,run_id,l); run_id[l]=0;
-			}
+				f_read(fN+ee, &sanger, 1);
+				if (sanger) {
+					int l;
+					f_read(fN+ee, &l, sizeof(int)); f_read(fN+ee,prefix,l);prefix[l]=0;
+					f_read(fN+ee, &l, sizeof(int)); f_read(fN+ee,machine_name,l); machine_name[l]=0;
+					f_read(fN+ee, &l, sizeof(int)); f_read(fN+ee,run_id,l); run_id[l]=0;
+				}
 			}
 		}
 	}
 
 	int read_next_read_info = 0;
-	int32_t core, corlen;
-	uint32_t n_id = 0, n_lane = 0, n_i, n_l, n_x, n_y;
-	for (int64_t K = 0; ; K++) {
-		for (int F = 0; F < 1 + (_interleave|_use_second_file); F++) {
-		/* names */
+	for (int F = 0; F < 1 + (_interleave|_use_second_file); F++) {
+		int32_t core, corlen;
+		uint32_t n_id = 0, n_lane = 0, n_i, n_l, n_x, n_y;
+		nameidx = 0;
+		/* init qq */
+		set_ac_stat(ac_freq3[F], ac_freq4[F]);
+		ac_read(fQ+F, 0, 0);
+
+		for (int64_t K = 0; ; K++) {
+			/* names */
 			if (K == read_next_read_info && !F) {
 				uint64_t len = 0;
 				if (f_read(fR+F, &core, sizeof(int32_t))!=sizeof(int32_t)) 
-					goto end;
+					break;
 				f_read(fR+F, &len, sizeof(int64_t));
 				read_next_read_info += len;
 
 				corlen=(core==MAXBIN-1)?0:strlen(patterns[core]);
 				n_id=n_lane=0;
-			//	if(corlen)LOG("i=%d, next=%d, core=%s[%d]\n", K, read_next_read_info, patterns[core],core);
+				//	if(corlen)LOG("i=%d, next=%d, core=%s[%d]\n", K, read_next_read_info, patterns[core],core);
 			}
+			else if (F && K == read_next_read_info) break;
 
+			/* names */
 			if (names) {
 				if (sanger) {
 					n_i=WI(fN+F);n_id+=n_i;
@@ -173,8 +183,8 @@ void decompress (const char *path, const char *out) {
 					n_x=WI(fN+F);
 					n_y=WI(fN+F);
 
-					sprintf(buffer,"%s.%u %s:%s:%u:%u:%u/%d",prefix,n_id,machine_name,run_id,n_lane,n_x,n_y,F+1);
-					f_write(pfo[F], buffer, strlen(buffer));
+					sprintf((char*)buffer,"%s.%u %s:%s:%u:%u:%u/%d",prefix,n_id,machine_name,run_id,n_lane,n_x,n_y,F+1);
+					f_write(pfo[F], (char*)buffer, strlen((char*)buffer));
 					if(core==MAXBIN-1){n_id=n_lane=0;}
 				}
 				else {
@@ -198,42 +208,20 @@ void decompress (const char *path, const char *out) {
 			}
 			chr='\n';
 			f_write(pfo[F],&chr,1);
-			
 
-		/* quals */
-			Z=F; a_read(fQ + F, buffer, bc[F]);
+
+			/* quals */
+			ac_read(fQ + F, buffer, bc[F]);
 			int qc = 0;
 			for (int i = 0; i < bc[F]; i ++) buffer[i]+=phredOff[F]; 
-				/*
-				buffer[qc++] = phredOff[F] + (o[i] >> 2);
-				buffer[qc++] = phredOff[F] + ( ((o[i + 0] << 4) | (o[i + 1] >> 4)) & 0x3f );
-				buffer[qc++] = phredOff[F] + ( ((o[i + 1] << 2) | (o[i + 2] >> 6)) & 0x3f );
-				buffer[qc++] = phredOff[F] + (o[i + 2] & 0x3f);
-				LOG("%c%c%c%c [%d]\n", buffer[qc-4],buffer[qc-3],buffer[qc-2],buffer[qc-1],__gc); __gc+=3;
-			}*/
 			buffer[qc = bc[F]] = '\n';
-			//bc = SZ_QUAL(len[F]);
-			/*bc = 0;
-			while (bc < len[F]) {
-				f_read (fQ+F,&chr, 1);
-				if (chr < 128) {
-					buffer[bc++] = chr;
-				}
-				else {
-					off = buffer[bc - 1];
-					for (int i = 0; i < chr - 128; i++)
-						buffer[bc++] = off;
-				}
-			}
-			buffer[bc++] = '\n';*/
-
-		/* reads */
-					
+		
+			/* reads */
 			if (!F) {
 				int r = f_read (fR+F, o, SZ_READ(len[F]-corlen));
 				int16_t end; 
 				f_read(fR+F, &end, sizeof(int16_t));
-			//	LOG("[%d,%d,%d]\n",corlen,len[F],end);
+				//	LOG("[%d,%d,%d]\n",corlen,len[F],end);
 				for(int i=0; i<len[F]-corlen; i++)
 					ox[i] = alphabet[ (o[i/4] >> ((3 - i%4) * 2)) & 3 ];
 
@@ -255,32 +243,16 @@ void decompress (const char *path, const char *out) {
 				chr = (buffer[i] == phredOff[F]
 						? 'N'
 						: l[i] ); // alphabet[ (l[i/4] >> ((3 - i%4) * 2)) & 3 ]);
-//				if (buffer[i] == '!') buffer[i] = phredOff[F];
+				//				if (buffer[i] == '!') buffer[i] = phredOff[F];
 				f_write (pfo[F], &chr, 1);
 			}
 			chr = '\n'; f_write (pfo[F],&chr, 1);
 			chr = '+'; f_write (pfo[F],&chr, 1);
 			chr = '\n'; f_write (pfo[F],&chr, 1);
 			f_write (pfo[F], buffer, qc+1);
-
+			nameidx++;
 		}
-		nameidx++;
-	/*	limit--;
-		if (_split_reads && !limit && K < nl[0] - 1) {
-			f_close (pfo[0]);
-			limit = _split_reads;
-			LOG("Created part %d as %s with %d reads\n", file, pfo[0]->file_name,_split_reads);
-			if (_use_second_file)
-				LOG("Created part %d as %s with %d reads\n", file, pfo[1]->file_name,_split_reads);
-
-			for (int i = 0; i < 1 + _use_second_file; i++) {
-				f_close (pfo[i]);
-				snprintf((char*)buffer, MAXLINE, "%s_%d.part%02d.fastq", out,i+1, file++);
-				f_open (fo + i, (char*)buffer, IO_WRITE);
-			}
-		}*/
 	}
-end:;
 //	int lR = (_split_reads? _split_reads-limit : nl[0]-limit);
 	LOG("Created part %d as %s with %d reads\n", file, pfo[0]->file_name,read_next_read_info);
 	if (_use_second_file)

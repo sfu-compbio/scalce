@@ -1,10 +1,10 @@
 # 786
 
-CC=gcc
-CFLAGS= -c -g -std=c99 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DSCALCE_VERSION=\"2.0_very_beta\" -fopenmp
-LDFLAGS= -lm zlib-1.2.5/libz.a bzip2-1.0.6/libbz2.a -fopenmp -ltcmalloc
-SOURCES=const.c buffio.c main.c names.c qualities.c reads.c compress.c decompress.c arithmetic.c
-OBJECTS=HELP.o patterns.o $(SOURCES:.c=.o)
+CC=g++
+CFLAGS= -c -O2 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DSCALCE_VERSION=\"2.0\" -fopenmp
+LDFLAGS=  -lm -fopenmp -ltcmalloc -lbz2 zlib-1.2.5/libz.a
+SOURCES=const.cpp buffio.cpp arithmetic.cpp main.cpp names.cpp qualities.cpp reads.cpp compress.cpp decompress.cpp
+OBJECTS=HELP.o patterns.o $(SOURCES:.cpp=.o)
 EXECUTABLE=scalce
 
 all: $(SOURCES) $(EXECUTABLE) 
@@ -12,7 +12,7 @@ all: $(SOURCES) $(EXECUTABLE)
 $(EXECUTABLE): $(OBJECTS) 
 	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 
-.c.o:
+.cpp.o:
 	$(CC) $(CFLAGS) $< -o $@
 
 HELP.o:
@@ -22,9 +22,11 @@ patterns.o:
 	ld -r -b binary -o patterns.o patterns.bin
 
 clean:
+	rm -f *.o scalce
+
+clean-all: clean
 	make clean -C zlib-1.2.5 
 	make clean -C bzip2-1.0.6 
-	rm -f *.o scalce
 
 libs:
 	make clean -C zlib-1.2.5 

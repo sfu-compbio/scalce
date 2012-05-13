@@ -93,7 +93,7 @@ int64_t PZopen (const char *path, int mode, char *c) {
 		dup2 (fd[0], 0); // set stdin to pipe
 		close (fd[0]);
 
-		char *const pl[] = { "pigz", "-c", 0 };
+		char* const pl[] = { (char*)"pigz", (char*)"-c", 0 };
 		execvp ("pigz", pl);
 		ERROR ("pigz exec failed");
 		abort();
@@ -206,7 +206,7 @@ char* f_gets (buffered_file *f, char *c, int64_t maxsz) {
 
 void f_init (buffered_file *f, int algorithm) { 
 	f->bufsz = _file_buffer_size;
-	f->buffer = mallox (_file_buffer_size);
+	f->buffer = (char*) mallox (_file_buffer_size);
 	f->handle = 0;
 	f->mode = f->bufpos = f->bufend = 0;
 

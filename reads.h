@@ -6,7 +6,7 @@
 #include "const.h"
 #include "buffio.h"
 
-char **patterns;
+extern char **patterns;
 
 /* read_data - contains all neccessary data for one read (name, quality, read and eventually paired read data */
 typedef struct {
@@ -40,10 +40,11 @@ struct aho_trie {
 	int id;                    /* pattern identificator */
 	uint64_t bin_size;         /* total number of reads bucketed so far */
 	int32_t output;            /* is this node "output" node? */
-	bin bin;                   /* bin linked list */
+	struct bin bin;                   /* bin linked list */
 };
 
 aho_trie *read_patterns ();
+aho_trie *read_patterns_from_file (const char *f);
 int aho_search (char *text, aho_trie *root, aho_trie **bucket);
 void aho_trie_bucket (aho_trie *t, read_data *d);
 int output_read (char *line, uint8_t *dest, int n, int l);

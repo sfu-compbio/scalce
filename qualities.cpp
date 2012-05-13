@@ -120,12 +120,6 @@ void quality_mapping_init (quality_mapping *q, buffered_file *f, int *read_lengt
 	}
 }
 
-/* encode quality using lossy table and gap closing */
-// extern!
-uint32_t ac_freq3[2][46*46],
-		   ac_freq4[2][46*46][46],
-			ac_sz = 0;
-
 int output_quality (char* line, char *read, quality_mapping *q, uint8_t *dest, int ZZ) {
 	static uint32_t prev[2][3] = { {500, 500, 500 }, {500,500,500} };
 
@@ -157,15 +151,15 @@ int output_quality (char* line, char *read, quality_mapping *q, uint8_t *dest, i
 //		ac_freq1[dest[i]]++;
 		if (prev[ZZ][1] < 256) {
 //			ac_freq2[prev[2]][dest[i]]++;
-			ac_freq3[ZZ][prev[ZZ][1]*46 + dest[i]]++;
+			ac_freq3[ZZ][prev[ZZ][1]*AC_DEPTH + dest[i]]++;
 			if (prev[ZZ][0] < 256) 
-				ac_freq4[ZZ][prev[ZZ][0]*46 + prev[ZZ][1]][dest[i]]++;
+				ac_freq4[ZZ][(prev[ZZ][0]*AC_DEPTH + prev[ZZ][1])*AC_DEPTH+dest[i]]++;
 		}
 		else { // (prev[2] >= 256) {
-			for (int e = 0; e < 46; e++)
-				for (int j = 0; j < 46; j++) {
-					for (int l = 0; l < 46; l++) {
-						ac_freq4[ZZ][e*46 + j][l] = 1;
+			for (int e = 0; e < AC_DEPTH; e++)
+				for (int j = 0; j < AC_DEPTH; j++) {
+					for (int l = 0; l < AC_DEPTH; l++) {
+						ac_freq4[ZZ][(e*AC_DEPTH + j)*AC_DEPTH+l] = 1;
 					}
 				}
 		}

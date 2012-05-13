@@ -181,7 +181,6 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 
 	uint64_t size;
 	for (int NP = 0; NP < _use_second_file + 1; NP++) {
-		Z=NP;
 		int32_t id, core;
 		int64_t lR = 0, lQ = 0, lN = 0, temp;
 		//	char alive = 1;
@@ -200,8 +199,13 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 
 		f_write (&foQ, magic, 8);
 		f_write (&foQ, &phred_offset, sizeof(int64_t));
-		a_init_coder (&foQ);
-
+		for (int i = 0; i < AC_DEPTH; i++) // write stat stuff
+			for (int j = 0; j < AC_DEPTH; j++) 
+				for (int k = 0; k < AC_DEPTH; k++) 
+					f_write(&foQ, &ac_freq4[NP][(i*AC_DEPTH + j)*AC_DEPTH+k], sizeof(uint32_t));	
+		set_ac_stat(ac_freq3[NP], ac_freq4[NP]);
+		uint64_t qualtotalsize = reads_count * read_length[NP];
+		f_write(&foQ,&qualtotalsize,sizeof(uint64_t));
 
 		f_write (&foN, magic, 8);
 		f_write (&foN, &_use_names, 1);
@@ -227,82 +231,82 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 
 		/* read metadata */
 		while(1){
-		if (f_read (fM, &id, sizeof(int32_t)) != sizeof(int32_t))
-			break;
-		f_read (fM, &core, sizeof(int32_t));
-		//LOG("%d\n",core);
-		f_read (fM, &lN, sizeof(int64_t));
-		f_read (fM, &lR, sizeof(int64_t));
-		f_read (fM, &lQ, sizeof(int64_t));
-		if (_use_second_file) {
-			int64_t *lR2 = (NP ? &lR : &temp);
-			int64_t *lQ2 = (NP ? &lQ : &temp);
-			f_read (fM, lR2, sizeof(int64_t));
-			f_read (fM, lQ2, sizeof(int64_t));
-		}
-
-		if (!NP) {
-			f_write(&foR, &core, sizeof(int32_t));
-			uint64_t size;
-			if (core != MAXBIN - 1) // root or non root
-				size = lR / ( SZ_READ( read_length[0] - strlen(patterns[core]) ) + sizeof(int16_t) );
-			else
-				size = lR / ( SZ_READ(read_length[0])+sizeof(int16_t) );
-			f_write(&foR, &size, sizeof(int64_t));
-		}
-		for (int64_t i = 0; i < lR; i += GLOBALBUFSZ) {
-			int64_t r = f_read (fR, global_buffer, MIN (lR - i, GLOBALBUFSZ));
-			f_write (&foR, global_buffer, r);
-		}
-		for (int64_t i = 0; i < lQ; i += GLOBALBUFSZ) {
-			int64_t r = f_read (fQ, global_buffer, MIN (lQ - i, GLOBALBUFSZ));
-			/*a*/a_write (&foQ, global_buffer, r);
-		}
-		if (_use_names && sanger) {
-			uint32_t n_id = 0, n_lane = 0;
-			for (int64_t nn = 0; nn < lN; ) {
-				uint8_t ll;
-				f_read(fN, &ll, sizeof(uint8_t));
-				f_read(fN, global_buffer, ll);
-				global_buffer[ll]=0;
-				nn += ll + 1;
-
-				char cc[200], cp = 0, ep = 0;
-				for (int i = 0; i <= ll; i++) if (i == ll || global_buffer[i] == ' ' || global_buffer[i] == ':' || global_buffer[i] == '.' || global_buffer[i] == '/') {
-					cc[cp]=0;
-					if (ep == 1) {
-						WW(atoi(cc)-n_id,&foN);
-						if ( core != MAXBIN-1 ) n_id=atoi(cc);
-					}
-					else if (ep == 4) {
-						WW(atoi(cc)-n_lane,&foN);
-						if(core != MAXBIN-1) n_lane=atoi(cc);
-					}
-					else if (ep == 5) {
-						WW(atoi(cc),&foN);	
-					}
-					else if (ep == 6) {
-						WW(atoi(cc),&foN);	
-					}
- 					
-					cp = 0;
-					ep++;
-				} else cc[cp++]=global_buffer[i];
-
-				//int64_t r = f_read (fN, global_buffer, MIN (lN - i, GLOBALBUFSZ));
-				//f_write (&foN, global_buffer, r);
+			if (f_read (fM, &id, sizeof(int32_t)) != sizeof(int32_t))
+				break;
+			f_read (fM, &core, sizeof(int32_t));
+			//LOG("%d\n",core);
+			f_read (fM, &lN, sizeof(int64_t));
+			f_read (fM, &lR, sizeof(int64_t));
+			f_read (fM, &lQ, sizeof(int64_t));
+			if (_use_second_file) {
+				int64_t *lR2 = (NP ? &lR : &temp);
+				int64_t *lQ2 = (NP ? &lQ : &temp);
+				f_read (fM, lR2, sizeof(int64_t));
+				f_read (fM, lQ2, sizeof(int64_t));
 			}
-		}
-		else if (_use_names) {
-			for (int64_t i = 0; i < lN; i += GLOBALBUFSZ) {
-				int64_t r = f_read (fN, global_buffer, MIN (lN - i, GLOBALBUFSZ));
-				f_write (&foN, global_buffer, r);
+
+			if (!NP) {
+				f_write(&foR, &core, sizeof(int32_t));
+				uint64_t size;
+				if (core != MAXBIN - 1) // root or non root
+					size = lR / ( SZ_READ( read_length[0] - strlen(patterns[core]) ) + sizeof(int16_t) );
+				else
+					size = lR / ( SZ_READ(read_length[0])+sizeof(int16_t) );
+				f_write(&foR, &size, sizeof(int64_t));
 			}
-		}
-		else;
+			for (int64_t i = 0; i < lR; i += GLOBALBUFSZ) {
+				int64_t r = f_read (fR, global_buffer, MIN (lR - i, GLOBALBUFSZ));
+				f_write (&foR, global_buffer, r);
+			}
+			for (int64_t i = 0; i < lQ; i += GLOBALBUFSZ) {
+				int64_t r = f_read (fQ, global_buffer, MIN (lQ - i, GLOBALBUFSZ));
+				ac_write (&foQ, (uint8_t*)global_buffer, r);
+			}
+			if (_use_names && sanger) {
+				uint32_t n_id = 0, n_lane = 0;
+				for (int64_t nn = 0; nn < lN; ) {
+					uint8_t ll;
+					f_read(fN, &ll, sizeof(uint8_t));
+					f_read(fN, global_buffer, ll);
+					global_buffer[ll]=0;
+					nn += ll + 1;
+
+					char cc[200], cp = 0, ep = 0;
+					for (int i = 0; i <= ll; i++) if (i == ll || global_buffer[i] == ' ' || global_buffer[i] == ':' || global_buffer[i] == '.' || global_buffer[i] == '/') {
+						cc[cp]=0;
+						if (ep == 1) {
+							WW(atoi(cc)-n_id,&foN);
+							if ( core != MAXBIN-1 ) n_id=atoi(cc);
+						}
+						else if (ep == 4) {
+							WW(atoi(cc)-n_lane,&foN);
+							if(core != MAXBIN-1) n_lane=atoi(cc);
+						}
+						else if (ep == 5) {
+							WW(atoi(cc),&foN);	
+						}
+						else if (ep == 6) {
+							WW(atoi(cc),&foN);	
+						}
+
+						cp = 0;
+						ep++;
+					} else cc[cp++]=global_buffer[i];
+
+					//int64_t r = f_read (fN, global_buffer, MIN (lN - i, GLOBALBUFSZ));
+					//f_write (&foN, global_buffer, r);
+				}
+			}
+			else if (_use_names) {
+				for (int64_t i = 0; i < lN; i += GLOBALBUFSZ) {
+					int64_t r = f_read (fN, global_buffer, MIN (lN - i, GLOBALBUFSZ));
+					f_write (&foN, global_buffer, r);
+				}
+			}
+			else;
 		}
 
-		a_finish_coder (&foQ);
+		ac_write(&foQ, 0, 0);
 		f_close (&foR);
 		f_close (&foN);
 		f_close (&foQ);
@@ -339,7 +343,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 void merge (int total, int param) {
 	char buffer[MAXLINE], buffer2[MAXLINE];
 
-	char *used = mallox (total + 5);
+	char *used = (char*) mallox (total + 5);
 	memset (used, 0, total + 5);
 
 	int found[50];
@@ -431,7 +435,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 	/* initialize the trie */
 	DLOG ("Reading core strings ... ");
-	aho_trie *trie = read_patterns ();
+	aho_trie *trie = pattern_path[0] ? read_patterns_from_file(pattern_path) : read_patterns ();
 	DLOG ("OK\n");
 
 
@@ -445,16 +449,16 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	if (_interleave)             /* all auxiliray functions will behave as in second file mode */
 		_use_second_file = 1;
 
-	aho_trie **buckets = mallox (_thread_count * sizeof(aho_trie*));
-	char ****data = mallox (_thread_count * sizeof(char*));
-	read_data *rdat = mallox (_thread_count * sizeof (read_data));
+	aho_trie **buckets = (aho_trie**) mallox (_thread_count * sizeof(aho_trie*));
+	char ****data = (char****) mallox (_thread_count * sizeof(char*));
+	read_data *rdat = (read_data*) mallox (_thread_count * sizeof (read_data));
 	for(int t = 0; t < _thread_count; t++) {
-		rdat[t].data = mallox (5 * MAXLINE);
-		data[t] = mallox (2 * sizeof(char*));
-		data[t][0] = mallox (3 * sizeof (char*));
-		data[t][1] = mallox (3 * sizeof (char*));
+		rdat[t].data = (uint8_t*) mallox (5 * MAXLINE);
+		data[t] = (char***) mallox (2 * sizeof(char*));
+		data[t][0] = (char**) mallox (3 * sizeof (char*));
+		data[t][1] = (char**) mallox (3 * sizeof (char*));
 		for (int i=0; i<6; i++)
-			data[t][i/3][i%3] = mallox (MAXLINE * sizeof (char));
+			data[t][i/3][i%3] = (char*) mallox (MAXLINE * sizeof (char));
 	}
 
 	/* initialize the files */
@@ -513,7 +517,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 			}
 
 			if (d_idx == _thread_count || done) {
-				//#pragma omp parallel for reduction(+:total_size) num_threads(_thread_count) 
+				#pragma omp parallel for reduction(+:total_size) num_threads(_thread_count) 
 				for (int t = 0; t < d_idx; t++) {
 					uint8_t *out = rdat[t].data;
 
@@ -548,9 +552,9 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 				if (total_size >= _max_bucket_set_size) {
 					total_size = 0;
-			LOG("> Memory alloc'd: %.2lf\n", getmemx());
+			//LOG("> Memory alloc'd: %.2lf\n", getmemx());
 					dump_trie (temp_file_count++, trie);
-			LOG("< Memory alloc'd: %.2lf\n", getmemx());
+		//	LOG("< Memory alloc'd: %.2lf\n", getmemx());
 				}
 			}
 
@@ -565,10 +569,10 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	}
 
 	/* clean all stuff */
-	LOG("> Memory alloc'd: %.2lf\n", getmemx());
+//	LOG("> Memory alloc'd: %.2lf\n", getmemx());
 	if (total_size)
 		dump_trie (temp_file_count++, trie);
-	LOG("< Memory alloc'd: %.2lf\n", getmemx());
+//	LOG("< Memory alloc'd: %.2lf\n", getmemx());
 	for (int fi = 0; fi < use_only_second_file + 1; fi++)
 		f_free (f + fi);
 	DLOG("\tDone!\n");

@@ -25,7 +25,7 @@ uint64_t  _max_bucket_set_size      = 4LL * 1024LL * 1024LL * 1024LL;
 char      _temp_directory[MAXLINE]  = "__temp__";
 char      _output_path[MAXLINE]     = "";
 char      _library_name[MAXLINE]		= "";
-char      _pattern_path[MAXLINE];  //  = "patterns.bin";
+char      _pattern_path[MAXLINE];  
 int       _split_reads              = 0;
 int		 _compression_mode         = IO_GZIP;
 char      _interleave               = 0;
@@ -95,7 +95,7 @@ int main (int argc, char **argv) {
 		{ "compression",       1, NULL, 'c' },
 		{ "output",            1, NULL, 'o' },
 		{ "sample-size",       1, NULL, 's' },
-	//	{ "patterns",          1, NULL, 'P' },
+		{ "patterns",          1, NULL, 'P' },
 		{ "interleave",        0, NULL, 'i' },
 		{ "temp-directory",    1, NULL, 't' },
 		{ "bucket-set-size",   1, NULL, 'B' },
@@ -166,9 +166,9 @@ int main (int argc, char **argv) {
 			case 'd':
 				mode = 1;
 				break;
-		/*	case 'P':
+			case 'P':
 				strncpy (_pattern_path, optarg, MAXLINE);
-				break; */
+				break; 
 			case 't':
 				strncpy (_temp_directory, optarg, MAXLINE);
 				break;

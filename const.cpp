@@ -49,14 +49,14 @@ void MEM(char *A){
 
 static uint64_t mem_usg = 0;
 void *mallox (size_t size) {
-	mem_usg += size;
+	//mem_usg += size;
 	void *v = malloc(size);
 
 	if (!v) { ERROR("mallox failed whoa whoa whoa!\n");  return 0; }
 	else return v;
 }
 void frex (void *ptr, size_t size) {
-	mem_usg -= size;
+	//mem_usg -= size;
 	free(ptr);
 }
 double getmemx () {

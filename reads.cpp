@@ -22,12 +22,12 @@ void bin_init (bin *b) {
 
 /* insert read_data into bin (linked list) */
 void bin_insert (bin *b, read_data *d) {
-	bin_node *n  = mallox (sizeof (struct bin_node));
+	bin_node *n  = (bin_node*) mallox (sizeof (struct bin_node));
 	n->data.sz   = d->sz;
 	n->next      = 0;
 	n->data.of   = d->of;
 	n->data.end  = d->end;
-	n->data.data = mallox (d->sz * sizeof (uint8_t));
+	n->data.data = (uint8_t*) mallox (d->sz * sizeof (uint8_t));
 	memcpy (n->data.data, d->data, d->sz);
 
 	#pragma omp critical 
@@ -113,7 +113,7 @@ struct trie_queue {
 
 /* queue initialization */
 void trie_queue_init (trie_queue *q, int sz) {
-	q->data = mallox (sz * sizeof (struct aho_trie*));
+	q->data = (aho_trie**) mallox (sz * sizeof (struct aho_trie*));
 	q->sz = sz;
 	q->start = q->end = q->size = 0;
 }
@@ -169,7 +169,7 @@ void pattern_insert (char *c, aho_trie *n, int level, int id) {
 	if (*c != 0 && *c != '\n') {
 		char cx = getval (*c);
 		if (n->child[cx] == 0) {
-			n->child[cx] = mallox (sizeof (struct aho_trie));
+			n->child[cx] = (aho_trie*) mallox (sizeof (struct aho_trie));
 			aho_trie_init (n->child[cx]);
 			n->child[cx]->level = level + 1;
 			nodes_count++;
@@ -230,7 +230,7 @@ void prepare_aho_automata (aho_trie *root) {
 	}
 
 	trie_queue_free (&q);
-	visited = mallox (nodes_count * sizeof (char));
+	visited = (char*) mallox (nodes_count * sizeof (char));
 }
 
 /* read core strings and create trie and aho automaton */
@@ -238,14 +238,14 @@ extern char _binary_patterns_bin_start;
 extern char _binary_patterns_bin_end;
 extern char _binary_patterns_bin_size;
 aho_trie *read_patterns () {
-	aho_trie *root = mallox (sizeof (struct aho_trie));
+	aho_trie *root = (aho_trie*) mallox (sizeof (struct aho_trie));
 	aho_trie_init (root);
 	char line[MAXLINE];
 	char alphabet[] = "ACGT";
 
-	patterns = mallox(5000000*sizeof(char*));
+	patterns = (char**) mallox(5000000*sizeof(char*));
 	for(int i=0;i<5000000;i++)
-		patterns[i]=mallox(15);
+		patterns[i]=(char*) mallox(15);
 
 
 	char *data = &_binary_patterns_bin_start;
@@ -278,6 +278,40 @@ aho_trie *read_patterns () {
 			pattern_c++;
 		}
 	}
+	prepare_aho_automata (root);
+	return root;
+}
+
+aho_trie *read_patterns_from_file (const char *path) {
+	aho_trie *root = (aho_trie*) mallox (sizeof (struct aho_trie));
+	aho_trie_init (root);
+	char line[MAXLINE];
+	char alphabet[] = "ACGT";
+	patterns = (char**) mallox(5000000*sizeof(char*));
+	for(int i=0;i<5000000;i++)
+		patterns[i]=(char*) mallox(15);
+
+
+	int len;
+	uint64_t val;
+
+	FILE *f = fopen(path, "r");
+	LOG("reading patterns from %s\n", path);
+	while (fscanf(f, "%d %llu", &len, &val) != EOF) {
+		if (len <= 4) {
+			LOG("\tskipping (%llu,%d)\n", val, len);
+			continue;
+		}
+		for (int i = 0; i < len; i++) {
+			patterns[pattern_c][len - i - 1] = alphabet[val & 3];
+			val >>= 2;
+		}
+		patterns[pattern_c][len] = 0;
+		pattern_insert (patterns[pattern_c], root, 0, pattern_c);
+		pattern_c++;
+	}
+	LOG("read %d patterns\n", pattern_c);
+	
 	prepare_aho_automata (root);
 	return root;
 }
@@ -384,7 +418,7 @@ void aho_trie_free (aho_trie *t) {
 	trie_queue_init (&q, nodes_count + 1);
 	trie_queue_push (&q, t);
 
-	aho_trie **p = mallox (nodes_count * sizeof (struct aho_trie*));
+	aho_trie **p = (aho_trie**) mallox (nodes_count * sizeof (struct aho_trie*));
 	memset(p, 0, nodes_count*sizeof(struct aho_trie*));
 	p[t->id] = t;
 
@@ -466,14 +500,14 @@ void bin_prepare (aho_trie *t) {
 
 	if (_allocd == 0 && b->size < 10000) {
 		_allocd = 10000;
-		_temp = mallox (_allocd * sizeof(bin_node*));
-		_nodes = mallox (_allocd * sizeof(bin_node*));
+		_temp = (bin_node**) mallox (_allocd * sizeof(bin_node*));
+		_nodes = (bin_node**) mallox (_allocd * sizeof(bin_node*));
 	}
 	else if (b->size > _allocd) {
 		frex(_temp, _allocd*sizeof(bin_node*));
 		frex(_nodes, _allocd*sizeof(bin_node*));
-		_temp = mallox (b->size * sizeof(bin_node*));
-		_nodes = mallox (b->size * sizeof(bin_node*));
+		_temp = (bin_node**) mallox (b->size * sizeof(bin_node*));
+		_nodes = (bin_node**) mallox (b->size * sizeof(bin_node*));
 		_allocd=b->size;
 	}
 	_bin_sz = 0;

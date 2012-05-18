@@ -6,8 +6,7 @@
 #include <pthread.h>
 #include "arithmetic.h"
 
-const int num_threads = 4;
-const int buffer_size = 1024 * 1024;
+const int buffer_size = 10 * 1024 * 1024;
 uint32_t ac_freq3[2][AC_DEPTH*AC_DEPTH],
 		   ac_freq4[2][AC_DEPTH*AC_DEPTH*AC_DEPTH];
 
@@ -198,13 +197,10 @@ void ac_decoder::read(uint8_t *ar, int sz) {
 
 /****************************/
 
-static pthread_t threads[num_threads];
-static uint8_t  input[num_threads * buffer_size],
-		   output[num_threads * buffer_size];
-static uint32_t input_size[num_threads],
-		   output_size[num_threads];
-static int thread_index[] = { 0, 1, 2, 3 };
-
+static pthread_t *threads;
+static uint8_t  *input, *output;
+static uint32_t *input_size, *output_size;
+static int *thread_index;
 ac_stat as;
 
 void set_ac_stat(uint32_t *a3, uint32_t *a4) {
@@ -224,12 +220,31 @@ void *thread_d (void *tv) {
 	int tx = *((int*)tv);
 	ac_decoder ad(&as, input + tx * buffer_size);
 	ad.read(output + tx * buffer_size, output_size[tx]);
-//	for(int i=0;i<output_size[tx];i++) 
-//		output[buffer_size*tx+i]+='!';
 	return 0;
 }
 
 /****************************/
+
+void ac_init () {
+	threads = (pthread_t*)malloc(sizeof(pthread_t) * _thread_count);
+	input = (uint8_t*)malloc(buffer_size * _thread_count);
+	output = (uint8_t*)malloc(buffer_size * _thread_count);
+	output_size = (uint32_t*)malloc(sizeof(uint32_t) * _thread_count);
+	input_size = (uint32_t*)malloc(sizeof(uint32_t) * _thread_count);
+	thread_index = (int*)malloc(_thread_count * sizeof(int));
+	for (int i = 0; i < _thread_count; i++)
+		thread_index[i] = i;
+}
+
+void ac_finish() {
+	free(threads);
+	free(input);
+	free(output);
+	free(output_size);
+	free(input_size);
+	free(thread_index);
+}
+
 void ac_write (buffered_file *fo, uint8_t *data, int size) {
 	static int current_position = 0;
 	if (!size) { // flush
@@ -255,15 +270,15 @@ void ac_write (buffered_file *fo, uint8_t *data, int size) {
 
 	int offset = 0;
 	while (size != offset) {
-		int w = num_threads * buffer_size - current_position;
+		int w = _thread_count * buffer_size - current_position;
 		if (size-offset < w) w = size-offset;
 		memcpy(input + current_position, data + offset, w);
-		if (current_position + w == buffer_size * num_threads) {
-			for (int i = 0; i < num_threads; i++) { 
+		if (current_position + w == buffer_size * _thread_count) {
+			for (int i = 0; i < _thread_count; i++) { 
 				input_size[i] = buffer_size;
 				pthread_create(&threads[i], 0, thread_c, (void*) &thread_index[i]);
 			}
-			for (int i = 0; i < num_threads; i++) {
+			for (int i = 0; i < _thread_count; i++) {
 				pthread_join (threads[i], 0);
 				f_write(fo, &output_size[i], sizeof(uint32_t));
 				f_write(fo, output + i * buffer_size, output_size[i]);
@@ -282,14 +297,14 @@ void ac_read (buffered_file *fi, uint8_t *data, int size) {
 	int offset = 0, w;
 	if (!size) goto x;
 	while (offset != size) {
-	  	w = num_threads * buffer_size - current_position;
+	  	w = _thread_count * buffer_size - current_position;
 		if (size-offset < w) w = size-offset;
 		memcpy(data + offset, output + current_position, w);
-		if (current_position + w == buffer_size * num_threads) {
+		if (current_position + w == buffer_size * _thread_count) {
 x:
 			if (!size) f_read(fi, &f_sz, sizeof(uint64_t));
 			int ct = 0;
-			for (; ct < num_threads; ct++) {
+			for (; ct < _thread_count; ct++) {
 				if (!f_read(fi, &input_size[ct], sizeof(int)))
 					break;
 				f_read(fi, input + ct * buffer_size, input_size[ct]);

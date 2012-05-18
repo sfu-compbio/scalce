@@ -34,7 +34,9 @@ uint32_t WI(buffered_file *f) {
 void decompress (const char *path, const char *out) {
 	uint8_t buffer[MAXLINE];
 
-	aho_trie *trie = read_patterns ();
+	aho_trie *trie = _pattern_path ? read_patterns_from_file(_pattern_path) : read_patterns ();
+
+	ac_init();
 
 	int32_t len[2]; int64_t nl[2], phredOff[2];
 
@@ -151,6 +153,9 @@ void decompress (const char *path, const char *out) {
 		}
 	}
 
+	int sz_meta = 1;
+	if (len[0] > 255) sz_meta = 2;
+
 	int read_next_read_info = 0;
 	for (int F = 0; F < 1 + (_interleave|_use_second_file); F++) {
 		int32_t core, corlen;
@@ -220,7 +225,8 @@ void decompress (const char *path, const char *out) {
 			if (!F) {
 				int r = f_read (fR+F, o, SZ_READ(len[F]-corlen));
 				int16_t end; 
-				f_read(fR+F, &end, sizeof(int16_t));
+				f_read(fR+F, &end, sz_meta);
+				if (end) end -= corlen;
 				//	LOG("[%d,%d,%d]\n",corlen,len[F],end);
 				for(int i=0; i<len[F]-corlen; i++)
 					ox[i] = alphabet[ (o[i/4] >> ((3 - i%4) * 2)) & 3 ];
@@ -269,6 +275,7 @@ void decompress (const char *path, const char *out) {
 	}
 	if(_use_second_file)
 		f_free(fo+1);
+	ac_finish();
 	LOG("Time elapsed: %02d:%02d:%02d\n", TIME/3600, (TIME/60)%60, TIME%60);
 }
 

@@ -55,4 +55,6 @@ public:
 void ac_write (buffered_file *fo, uint8_t *data, int size);
 void ac_read (buffered_file *fi, uint8_t *data, int size);
 void set_ac_stat(uint32_t *a3, uint32_t *a4);
+void ac_init();
+void ac_finish();
 #endif // ARITHMETIC_H__

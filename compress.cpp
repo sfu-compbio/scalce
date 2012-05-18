@@ -75,6 +75,7 @@ int merhamet_merge (int *fl, int flc, int idx) {
 			f_write (file_pool + 0, global_buffer, l);
 			s += l;
 		}
+		
 		totalLen += len;
 		for (int i = idx + (idx<=3); i < 3 + 2 * _use_second_file; i++)
 			f_read (file_pool + minI + 1, &len, sizeof(int64_t));
@@ -142,6 +143,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	              *fR = file_pool + 1,
 	              *fQ = file_pool + 2,
 	              *fM = file_pool + 3;
+	ac_init();
 
 	/*
 	 * Structure:
@@ -178,6 +180,9 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	int64_t new_size = 0;
 
 	uint8_t magic[] = { 's','c','a','l', 'c','e','2','0' };
+
+	int sz_meta = 1;
+	if (read_length[0] > 255) sz_meta = 2;
 
 	uint64_t size;
 	for (int NP = 0; NP < _use_second_file + 1; NP++) {
@@ -249,9 +254,9 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 				f_write(&foR, &core, sizeof(int32_t));
 				uint64_t size;
 				if (core != MAXBIN - 1) // root or non root
-					size = lR / ( SZ_READ( read_length[0] - strlen(patterns[core]) ) + sizeof(int16_t) );
+					size = lR / ( SZ_READ( read_length[0] - strlen(patterns[core]) ) + sz_meta );
 				else
-					size = lR / ( SZ_READ(read_length[0])+sizeof(int16_t) );
+					size = lR / ( SZ_READ(read_length[0])+sz_meta );
 				f_write(&foR, &size, sizeof(int64_t));
 			}
 			for (int64_t i = 0; i < lR; i += GLOBALBUFSZ) {
@@ -315,8 +320,11 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		// ...
 		struct stat s;
 		stat (foR.file_name, &s); new_size += s.st_size;
+		LOG("\tRead bit size:    paired end %d = %.2lf\n", NP, (s.st_size * 8.0) / double(reads_count * read_length[NP]));
 		stat (foQ.file_name, &s); new_size += s.st_size;
+		LOG("\tQuality bit size: paired end %d = %.2lf\n", NP, (s.st_size * 8.0) / double(reads_count * read_length[NP]));
 		stat (foN.file_name, &s); new_size += s.st_size;
+
 
 		if (_use_second_file && !NP) {
 			fR = file_pool + 4;
@@ -335,6 +343,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		f_close (file_pool + i);
 		unlink (buffer);
 	}
+	ac_finish();
 
 	DLOG("\tDone!\n");
 	return new_size;
@@ -473,6 +482,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	quality_mapping qmap[2];
 	get_quality_stats (f, files[0], qmap);
 
+	LOG("Using %d threads...\n", _thread_count);
 
 	/* iterate through files */
 	for (int i = 0; i < nf; i++) {
@@ -526,7 +536,8 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 					int64_t sz = output_name (data[t][0][0], out);
 					if (n != -1) {
 						sz += output_read (data[t][0][1], out + sz, n-buckets[t]->level+1, buckets[t]->level);
-						rdat[t].end = n-buckets[t]->level+1;
+					//	rdat[t].end = n-buckets[t]->level+1;
+						rdat[t].end = n + 1;
 					}
 					else {
 						sz += output_read (data[t][0][1], out + sz, 0, 0);
@@ -552,9 +563,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 				if (total_size >= _max_bucket_set_size) {
 					total_size = 0;
-			//LOG("> Memory alloc'd: %.2lf\n", getmemx());
 					dump_trie (temp_file_count++, trie);
-		//	LOG("< Memory alloc'd: %.2lf\n", getmemx());
 				}
 			}
 
@@ -570,6 +579,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 	/* clean all stuff */
 //	LOG("> Memory alloc'd: %.2lf\n", getmemx());
+	
 	if (total_size)
 		dump_trie (temp_file_count++, trie);
 //	LOG("< Memory alloc'd: %.2lf\n", getmemx());
@@ -584,7 +594,6 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	merge (temp_file_count, 8);
 
 	/* compress and output */
-	LOG("Doing something crazy...\n");
 	int scalce_preprocessing_time = TIME;
 	int64_t new_size = combine_and_compress_with_split (temp_file_count-1, output, (_split_reads ? _split_reads : reads_count), qmap[0].offset);
 
@@ -606,5 +615,6 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	LOG("\tTime elapsed: %02d:%02d:%02d\n", TIME/3600, (TIME/60)%60, TIME%60);
 	LOG("\tCompression time: %02d:%02d:%02d\n", (TIME-scalce_preprocessing_time)/3600, ((TIME-scalce_preprocessing_time)/60)%60, (TIME-scalce_preprocessing_time)%60);
 	LOG("\tOriginal size: %.2lfM, new size: %.2lfM, compression factor: %.2lf\n", original_size/(1024.0*1024.4), new_size/(1024.0*1024.0), (original_size/(double)new_size));
+	
 }
 

@@ -60,6 +60,7 @@ extern uint64_t  _file_buffer_size;
 extern uint64_t  _max_bucket_set_size;
 extern char      _temp_directory[MAXLINE];
 extern char      _library_name[MAXLINE];
+extern char      _pattern_path[MAXLINE];  
 extern int       _time_elapsed;
 extern int       _split_reads;
 extern int       _compression_mode;

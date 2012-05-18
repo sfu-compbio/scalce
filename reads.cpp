@@ -23,12 +23,10 @@ void bin_init (bin *b) {
 /* insert read_data into bin (linked list) */
 void bin_insert (bin *b, read_data *d) {
 	bin_node *n  = (bin_node*) mallox (sizeof (struct bin_node));
-	n->data.sz   = d->sz;
-	n->next      = 0;
-	n->data.of   = d->of;
-	n->data.end  = d->end;
+	n->data = *d;
 	n->data.data = (uint8_t*) mallox (d->sz * sizeof (uint8_t));
 	memcpy (n->data.data, d->data, d->sz);
+	n->next = 0;
 
 	#pragma omp critical 
 	{
@@ -67,13 +65,16 @@ void bin_dump (aho_trie *t, buffered_file *f) {
 	if (t->output >= 0) sz_read = SZ_READ( read_length[0] - strlen(patterns[t->output]) );
 	else sz_read = SZ_READ (read_length[0]);
 
+	int sz_meta = 1;
+	if (read_length[0] > 255) sz_meta = 2;
+
 	for (bin_node *n = t->bin.first; n; n = n->next) {
 		read_data *r = &(n->data);
 		if (_use_names)
 			nN = f_write (f + 0, r->data, r->data[0] + 1);
 		nR = f_write (f + 1, r->data + nN, sz_read);
 		// write the end marker
-		f_write(f+1, &(r->end), sizeof(int16_t));
+		f_write(f+1, &(r->end), sz_meta);
 
 		nQ = f_write (f + 2, r->data + nN + nR, r->of - nN - nR);
 
@@ -81,9 +82,10 @@ void bin_dump (aho_trie *t, buffered_file *f) {
 			nR2 = f_write (f + 4, r->data + r->of, SZ_READ (read_length[1]));
 			nQ2 = f_write (f + 5, r->data + r->of + nR2, r->sz - (r->of + nR2));
 		}
-		tN += nN; tQ += nQ; tR += nR + sizeof(int16_t); tR2 += nR2; tQ2 += nQ2;
+		tN += nN; tQ += nQ; tR += nR + sz_meta; tR2 += nR2; tQ2 += nQ2;
 	}
 	bin_free (&(t->bin));
+
 	
 	if (t->output == -1) {
 		int32_t x = MAXBIN - 1;
@@ -157,7 +159,6 @@ void aho_trie_init (aho_trie *t) {
 /* bucket one read */
 void aho_trie_bucket (aho_trie *t, read_data *d) {
 	bin_insert (&(t->bin), d);
-
 	#pragma omp critical 
 	{
 		t->bin_size++;
@@ -230,7 +231,7 @@ void prepare_aho_automata (aho_trie *root) {
 	}
 
 	trie_queue_free (&q);
-	visited = (char*) mallox (nodes_count * sizeof (char));
+	visited = (char*) mallox ((nodes_count + 1) * sizeof (char));
 }
 
 /* read core strings and create trie and aho automaton */
@@ -322,20 +323,16 @@ int aho_search (char *text, aho_trie *root, aho_trie **bucket) {
 
 	int bestpos = -1;
 	for (int i = 0; text[i] != 0 && text[i] != '\n'; i++) {
-//		if (text[i] == 'N') 
-	//		cur = root;
-	//	else {
-			cur = cur->child[getval (text[i])];
-			if (cur->next_to_output) {
-				x = cur->next_to_output;
-				if (!largest || 
-						largest->bin_size < x->bin_size || 
-						(largest->bin_size == x->bin_size && largest->level < x->level)) {
-					bestpos = i;
-					largest = x;
-				}
+		cur = cur->child[getval (text[i])];
+		if (cur->next_to_output) {
+			x = cur->next_to_output;
+			if (!largest ||
+					largest->level < x->level ||
+					(largest->level == x->level && largest->bin_size < x->bin_size)) {
+				bestpos = i;
+				largest = x;
 			}
-	//	} 
+		}
 	}
 	*bucket = (largest ? largest : root);
 	return bestpos;
@@ -375,11 +372,12 @@ int output_read (char *line, uint8_t *dest, int n, int l) {
  * unbucketed reads are flushed at the end
  * see dump_trie for more information */
 void aho_output (aho_trie *root, buffered_file *f) { 
-	memset (visited, 0, sizeof(char) * nodes_count);
+	memset (visited, 0, sizeof(char) * (nodes_count + 1));
 	visited[root->id] = 1;
 
 	trie_queue q;
 	trie_queue_init (&q, nodes_count + 1);
+
 
 	for (int i = 0; i < 4; i++) {
 		trie_queue_push (&q, root->child[i]);
@@ -388,6 +386,7 @@ void aho_output (aho_trie *root, buffered_file *f) {
 
 	while (q.size) {
 		aho_trie *cur = trie_queue_pop (&q);
+		assert(cur->id <= nodes_count);
 		if (cur->bin.size) {
 			bin_prepare (cur);
 			bin_dump (cur, f);
@@ -418,8 +417,8 @@ void aho_trie_free (aho_trie *t) {
 	trie_queue_init (&q, nodes_count + 1);
 	trie_queue_push (&q, t);
 
-	aho_trie **p = (aho_trie**) mallox (nodes_count * sizeof (struct aho_trie*));
-	memset(p, 0, nodes_count*sizeof(struct aho_trie*));
+	aho_trie **p = (aho_trie**) mallox ((nodes_count+1) * sizeof (struct aho_trie*));
+	memset(p, 0, (1+nodes_count)*sizeof(struct aho_trie*));
 	p[t->id] = t;
 
 	while (q.size) {
@@ -450,8 +449,12 @@ void aho_trie_free (aho_trie *t) {
   *			size  - partition size
   *			v     - vector to be sorted (vector of pointers to string references!)
   */
-#define _POS(n,x,i) \
+/*#define _POS(n,x,i) \
+	(( (n[x]->data.data[ n[x]->data.data[0] + 1 + ((i) / 4)]) >> ((3 - ((i) % 4)) * 2) ) & 3)*/
+#define _POSX(n,x,i) \
 	(( (n[x]->data.data[ n[x]->data.data[0] + 1 + ((i) / 4)]) >> ((3 - ((i) % 4)) * 2) ) & 3)
+#define _POS(n,x,i) \
+	((i + n[x]->data.end < read_length[0]) ? _POSX(n,x,i) : 0)
 
 bin_node **_nodes = 0,
 			**_temp  = 0;
@@ -494,7 +497,6 @@ void _radix_sort (int pos, int64_t start, int64_t size) {
 }
 
 void bin_prepare (aho_trie *t) {
-	return; 
 	bin *b = &(t->bin);
 	//LOG("core %10d    sz %10d orig len %2d\n",t->id,b->size,t->level);
 

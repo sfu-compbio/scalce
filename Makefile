@@ -1,8 +1,8 @@
 # 786
 
 CC=g++
-CFLAGS= -c -O2 -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DSCALCE_VERSION=\"2.0\" -fopenmp
-LDFLAGS=  -lm -fopenmp -ltcmalloc -lbz2 zlib-1.2.5/libz.a
+CFLAGS= -c -O2  -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DSCALCE_VERSION=\"2.1\" -fopenmp
+LDFLAGS=  -lm  -fopenmp -lbz2 zlib-1.2.5/libz.a
 SOURCES=const.cpp buffio.cpp arithmetic.cpp main.cpp names.cpp qualities.cpp reads.cpp compress.cpp decompress.cpp
 OBJECTS=HELP.o patterns.o $(SOURCES:.cpp=.o)
 EXECUTABLE=scalce

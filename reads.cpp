@@ -168,6 +168,7 @@ void aho_trie_bucket (aho_trie *t, read_data *d) {
 /* insert core string into trie */
 void pattern_insert (char *c, aho_trie *n, int level, int id) {
 	if (*c != 0 && *c != '\n') {
+		printf("%c", *c);
 		char cx = getval (*c);
 		if (n->child[cx] == 0) {
 			n->child[cx] = (aho_trie*) mallox (sizeof (struct aho_trie));
@@ -179,6 +180,7 @@ void pattern_insert (char *c, aho_trie *n, int level, int id) {
 	}
 	else {
 		n->output = id;
+		printf("\n");
 //		n-> = 1;
 	}
 }
@@ -279,6 +281,9 @@ aho_trie *read_patterns () {
 			pattern_c++;
 		}
 	}
+
+	printf("Read %d patterns\n", pattern_c);
+
 	prepare_aho_automata (root);
 	return root;
 }
@@ -311,7 +316,7 @@ aho_trie *read_patterns_from_file (const char *path) {
 		pattern_insert (patterns[pattern_c], root, 0, pattern_c);
 		pattern_c++;
 	}
-	LOG("read %d patterns\n", pattern_c);
+	printf("Read %d patterns\n", pattern_c);
 	
 	prepare_aho_automata (root);
 	return root;

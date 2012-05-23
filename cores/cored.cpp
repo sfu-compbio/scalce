@@ -3,9 +3,11 @@
 #include <iostream>
 #include <cstdio>
 #include <vector>
+#include <cstring>
+#include <inttypes.h>
 using namespace std;
 
-vector<int64_t> v;
+vector<uint64_t> v;
 
 void dox(int l) {
 	fwrite(&l,1,2,stdout);
@@ -27,21 +29,15 @@ int64_t cnt(char *c){
 }
 
 int main (void) {
-	char l[50];
-	int pl=0;
-	bool f=false;
-	while (fgets(l,50,stdin)){
-		int xl=strlen(l)-1;
+	int pl=8;
 
-		if(f&&pl!=xl) {
+	uint64_t l, cr;
+	while (scanf("%llu %llu", &l, &cr) != EOF){
+		if(pl!=l) {
 			dox(pl);
-			pl=xl;
+			pl=l;
 		}
-		v.push_back(cnt(l));
-		if(!f) {
-			f=1;
-			pl=xl;
-		}
+		v.push_back( cr );
 	}
 	dox(pl);
 

@@ -140,17 +140,6 @@ void decompress (const char *path, const char *out) {
 				library[t] = 0;
 			}
 		}
-		else {
-			for(int ee=0;ee<(_use_second_file|_interleave)+1;ee++) {
-				f_read(fN+ee, &sanger, 1);
-				if (sanger) {
-					int l;
-					f_read(fN+ee, &l, sizeof(int)); f_read(fN+ee,prefix,l);prefix[l]=0;
-					f_read(fN+ee, &l, sizeof(int)); f_read(fN+ee,machine_name,l); machine_name[l]=0;
-					f_read(fN+ee, &l, sizeof(int)); f_read(fN+ee,run_id,l); run_id[l]=0;
-				}
-			}
-		}
 	}
 
 	int sz_meta = 1;
@@ -182,26 +171,14 @@ void decompress (const char *path, const char *out) {
 
 			/* names */
 			if (names) {
-				if (sanger) {
-					n_i=WI(fN+F);n_id+=n_i;
-					n_l=WI(fN+F);n_lane+=n_l;
-					n_x=WI(fN+F);
-					n_y=WI(fN+F);
+				f_read(fN+F, &chr, 1);
+				buffer[0] = '@'; 
+				f_read(fN+F, buffer+1, chr);
 
-					sprintf((char*)buffer,"%s.%u %s:%s:%u:%u:%u/%d",prefix,n_id,machine_name,run_id,n_lane,n_x,n_y,F+1);
-					f_write(pfo[F], (char*)buffer, strlen((char*)buffer));
-					if(core==MAXBIN-1){n_id=n_lane=0;}
-				}
-				else {
-					f_read(fN+F, &chr, 1);
-					buffer[0] = '@'; 
-					f_read(fN+F, buffer+1, chr);
+				if((_interleave|_use_second_file) && chr > 0 && buffer[chr - 1] == '/')
+					buffer[chr] = F + 1 + '0';
 
-					if((_interleave|_use_second_file) && chr > 0 && buffer[chr - 1] == '/')
-						buffer[chr] = F + 1 + '0';
-
-					f_write(pfo[F],buffer, chr+1);
-				}
+				f_write(pfo[F],buffer, chr+1);
 			}
 			else {
 				snprintf((char*)buffer, MAXLINE, "@%s.%lld", library, nameidx);

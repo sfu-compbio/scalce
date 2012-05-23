@@ -179,7 +179,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 
 	int64_t new_size = 0;
 
-	uint8_t magic[] = { 's','c','a','l', 'c','e','2','0' };
+	uint8_t magic[] = { 's','c','a','l', 'c','e','2','1' };
 
 	int sz_meta = 1;
 	if (read_length[0] > 255) sz_meta = 2;
@@ -219,22 +219,10 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 			f_write (&foN, &name_idx, sizeof(int64_t));
 			f_write (&foN, _library_name, strlen(_library_name));
 		}
-		else {
-			f_write(&foN, &sanger, 1);
-			if (sanger) {
-				int l; char *cx;
-			
-				cx = prefix;
-				l = strlen(cx); f_write(&foN, &l, sizeof(int)); f_write(&foN, cx, l);
-				cx = machine_name;
-				l = strlen(cx); f_write(&foN, &l, sizeof(int)); f_write(&foN, cx, l);
-				cx = run_id;
-				l = strlen(cx); f_write(&foN, &l, sizeof(int)); f_write(&foN, cx, l);
-			}
-		}
-
+		
 
 		/* read metadata */
+		int __nC__=0;
 		while(1){
 			if (f_read (fM, &id, sizeof(int32_t)) != sizeof(int32_t))
 				break;
@@ -267,49 +255,17 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 				int64_t r = f_read (fQ, global_buffer, MIN (lQ - i, GLOBALBUFSZ));
 				ac_write (&foQ, (uint8_t*)global_buffer, r);
 			}
-			if (_use_names && sanger) {
-				uint32_t n_id = 0, n_lane = 0;
-				for (int64_t nn = 0; nn < lN; ) {
-					uint8_t ll;
-					f_read(fN, &ll, sizeof(uint8_t));
-					f_read(fN, global_buffer, ll);
-					global_buffer[ll]=0;
-					nn += ll + 1;
-
-					char cc[200], cp = 0, ep = 0;
-					for (int i = 0; i <= ll; i++) if (i == ll || global_buffer[i] == ' ' || global_buffer[i] == ':' || global_buffer[i] == '.' || global_buffer[i] == '/') {
-						cc[cp]=0;
-						if (ep == 1) {
-							WW(atoi(cc)-n_id,&foN);
-							if ( core != MAXBIN-1 ) n_id=atoi(cc);
-						}
-						else if (ep == 4) {
-							WW(atoi(cc)-n_lane,&foN);
-							if(core != MAXBIN-1) n_lane=atoi(cc);
-						}
-						else if (ep == 5) {
-							WW(atoi(cc),&foN);	
-						}
-						else if (ep == 6) {
-							WW(atoi(cc),&foN);	
-						}
-
-						cp = 0;
-						ep++;
-					} else cc[cp++]=global_buffer[i];
-
-					//int64_t r = f_read (fN, global_buffer, MIN (lN - i, GLOBALBUFSZ));
-					//f_write (&foN, global_buffer, r);
-				}
-			}
-			else if (_use_names) {
+			if (_use_names) {
 				for (int64_t i = 0; i < lN; i += GLOBALBUFSZ) {
 					int64_t r = f_read (fN, global_buffer, MIN (lN - i, GLOBALBUFSZ));
 					f_write (&foN, global_buffer, r);
 				}
 			}
 			else;
+
+			__nC__++;
 		}
+		printf("Written %d cores\n", __nC__);
 
 		ac_write(&foQ, 0, 0);
 		f_close (&foR);
@@ -554,7 +510,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 					rdat[t].sz = sz;
 					aho_trie_bucket (buckets[t], rdat + t);
 
-					total_size += sz + sizeof(read_data) + sizeof(struct bin_node*);
+					total_size += sizeof(bin_node) + sz;
 				}
 				
 				reads_count += d_idx;

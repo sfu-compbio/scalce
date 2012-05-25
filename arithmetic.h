@@ -6,18 +6,18 @@
 #include "buffio.h"
 
 #define AC_DEPTH 50
-extern uint32_t 
+extern uint64_t 
 			ac_freq3[2][AC_DEPTH*AC_DEPTH],    // 16K
 		   ac_freq4[2][AC_DEPTH*AC_DEPTH*AC_DEPTH]; // 760k
 void a_init_decoder (buffered_file *f);
 void a_read (buffered_file *f, uint8_t *arr, int sz);
 
 struct ac_stat {
-	uint32_t *acfq3, *acfq4;
+	uint64_t *acfq3, *acfq4;
 	uint32_t hi_fq[AC_DEPTH * AC_DEPTH][AC_DEPTH];
 	uint32_t lo_fq[AC_DEPTH * AC_DEPTH][AC_DEPTH];
 	ac_stat(){};
-	ac_stat(uint32_t*, uint32_t*);
+	ac_stat(uint64_t*, uint64_t*);
 };	
 class ac_coder {
 private:
@@ -54,7 +54,7 @@ public:
 
 void ac_write (buffered_file *fo, uint8_t *data, int size);
 void ac_read (buffered_file *fi, uint8_t *data, int size);
-void set_ac_stat(uint32_t *a3, uint32_t *a4);
+void set_ac_stat(uint64_t *a3, uint64_t *a4);
 void ac_init();
 void ac_finish();
 #endif // ARITHMETIC_H__

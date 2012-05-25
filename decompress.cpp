@@ -19,22 +19,10 @@ void get_file_name (char *name, char c) {
 	}
 }
 
-uint32_t WI(buffered_file *f) {
-	uint32_t r=0,i=0;
-	while(1) {
-		uint8_t x; f_read(f,&x,1);
-
-		r|=((x&0x7f)<<(i*7));
-		if(x&0x80) i++;
-		else break;
-	}
-	return r;
-}
-
 void decompress (const char *path, const char *out) {
 	uint8_t buffer[MAXLINE];
 
-	aho_trie *trie = _pattern_path ? read_patterns_from_file(_pattern_path) : read_patterns ();
+	aho_trie *trie = _pattern_path[0] ? read_patterns_from_file(_pattern_path) : read_patterns ();
 
 	ac_init();
 
@@ -86,8 +74,11 @@ void decompress (const char *path, const char *out) {
 		f_read (fQ+i, phredOff+i, sizeof(int64_t));
 		for (int x = 0; x < AC_DEPTH; x++) // write stat stuff
 			for (int j = 0; j < AC_DEPTH; j++) 
-				for (int k = 0; k < AC_DEPTH; k++) 
-					f_read(fQ+i, &ac_freq4[i][(x*AC_DEPTH + j)*AC_DEPTH+k], sizeof(uint32_t));	
+				for (int k = 0; k < AC_DEPTH; k++) { 
+					uint32_t y;
+					f_read(fQ+i, &y, sizeof(uint32_t));
+					ac_freq4[i][(x*AC_DEPTH + j)*AC_DEPTH+k] = y;	
+				}
 
 		if (!i) strncpy ((char*)buffer, get_second_file (path), MAXLINE);
 	}

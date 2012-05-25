@@ -11,7 +11,7 @@ int output_name (char* name, uint8_t *dest) {
 		return 0;
 
 	int i;
-	for (i = 1; name[i] != 0 && name[i] != '\n' /*&& name[i] != ' '*/; i++)
+	for (i = 1; name[i] != 0 && name[i] != '\n' && name[i] != ' '; i++)
 		dest[i] = name[i];
 	dest[0] = i - 1;
 	if (_interleave && i>=2 && dest[i-2] == '/' &&  (dest[i-1] == '1'||dest[i-1]=='2'))

@@ -28,7 +28,7 @@ void MEM(char *A);
 	fprintf(stderr, "[%02d:%02d:%02d]: "c, TIME/3600, (TIME/60)%60, TIME%60, ##__VA_ARGS__)
 #else 
 #define LOG(c,...) fprintf(stderr,c,##__VA_ARGS__)
-#define DLOG(...)  ;
+#define DLOG(c,...) fprintf(stderr,c,##__VA_ARGS__)
 #endif
 #define ERROR(c,...)\
 	{ fprintf (stderr, "(ERROR) "c, ##__VA_ARGS__); exit (1); }
@@ -49,7 +49,7 @@ void MEM(char *A);
 // Max. bin ID
 #define MAXBIN       (1 << 30)
 // Max. metadata file size, 200MB, will 
-#define MAXMETA      (200 * 1024 * 1024)
+#define MAXMETA      (300 * 1024 * 1024)
 
 // Global program arguments
 extern int       _quality_sample_lines;

@@ -7,12 +7,12 @@
 #include "arithmetic.h"
 
 const int buffer_size = 10 * 1024 * 1024;
-uint32_t ac_freq3[2][AC_DEPTH*AC_DEPTH],
+uint64_t ac_freq3[2][AC_DEPTH*AC_DEPTH],
 		   ac_freq4[2][AC_DEPTH*AC_DEPTH*AC_DEPTH];
 
 /*******************************************/
 
-ac_stat::ac_stat (uint32_t *a3, uint32_t *a4) {
+ac_stat::ac_stat (uint64_t *a3, uint64_t *a4) {
 	acfq3 = a3;
 	acfq4 = a4;
 
@@ -22,6 +22,7 @@ ac_stat::ac_stat (uint32_t *a3, uint32_t *a4) {
 			for (int l = 1; l < AC_DEPTH; l++) 
 				hi_fq[i*AC_DEPTH + j][l] = hi_fq[i*AC_DEPTH + j][l - 1] + acfq4[(i*AC_DEPTH + j)*AC_DEPTH+l];
 			acfq3[i*AC_DEPTH + j] = hi_fq[i*AC_DEPTH + j][AC_DEPTH - 1];
+			assert(acfq3[i*AC_DEPTH+j]<((1LL<<32)-1));
 			int p = -1;
 			for (int l = 0; l < AC_DEPTH; l++) if (acfq4[(i*AC_DEPTH + j)*AC_DEPTH+l]) {
 				if (p != -1) 
@@ -203,7 +204,7 @@ static uint32_t *input_size, *output_size;
 static int *thread_index;
 ac_stat as;
 
-void set_ac_stat(uint32_t *a3, uint32_t *a4) {
+void set_ac_stat(uint64_t *a3, uint64_t *a4) {
 	as = ac_stat(a3,a4);
 }
 

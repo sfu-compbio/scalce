@@ -144,7 +144,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	              *fQ = file_pool + 2,
 	              *fM = file_pool + 3;
 	ac_init();
-
+	
 	/*
 	 * Structure:
 	 * - Read size 		int32
@@ -204,10 +204,24 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 
 		f_write (&foQ, magic, 8);
 		f_write (&foQ, &phred_offset, sizeof(int64_t));
+		
+		uint64_t _lmt_ = (1LL << 32) - 1;
+		int factor = 1;
+		factor += (reads_count * read_length[NP]) / _lmt_;
+		LOG("shrink factor for %d: %d\n", NP, factor);
+
 		for (int i = 0; i < AC_DEPTH; i++) // write stat stuff
 			for (int j = 0; j < AC_DEPTH; j++) 
-				for (int k = 0; k < AC_DEPTH; k++) 
-					f_write(&foQ, &ac_freq4[NP][(i*AC_DEPTH + j)*AC_DEPTH+k], sizeof(uint32_t));	
+				for (int k = 0; k < AC_DEPTH; k++) {
+
+					uint64_t *p = &ac_freq4[NP][(i*AC_DEPTH+j)*AC_DEPTH+k];
+					*p = *p / factor;
+					if (*p == 0) *p = 1;
+
+					uint32_t x = *p;
+					f_write(&foQ, &x, sizeof(uint32_t));	
+
+				}
 		set_ac_stat(ac_freq3[NP], ac_freq4[NP]);
 		uint64_t qualtotalsize = reads_count * read_length[NP];
 		f_write(&foQ,&qualtotalsize,sizeof(uint64_t));
@@ -271,7 +285,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		f_close (&foR);
 		f_close (&foN);
 		f_close (&foQ);
-		DLOG("\tData for paired-end %d with %lld reads in files (%s, %s, %s)\n", NP, reads_written, foN.file_name, foQ.file_name, foR.file_name);
+//		DLOG("\tData for paired-end %d with %lld reads in files (%s, %s, %s)\n", NP, reads_written, foN.file_name, foQ.file_name, foR.file_name);
 
 		// ...
 		struct stat s;

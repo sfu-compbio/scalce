@@ -72,6 +72,8 @@ void bin_dump (aho_trie *t, buffered_file *f) {
 		read_data *r = &(n->data);
 		if (_use_names)
 			nN = f_write (f + 0, r->data, r->data[0] + 1);
+		else
+			nN = 1;
 		nR = f_write (f + 1, r->data + nN, sz_read);
 		// write the end marker
 		f_write(f+1, &(r->end), sz_meta);
@@ -82,10 +84,11 @@ void bin_dump (aho_trie *t, buffered_file *f) {
 			nR2 = f_write (f + 4, r->data + r->of, SZ_READ (read_length[1]));
 			nQ2 = f_write (f + 5, r->data + r->of + nR2, r->sz - (r->of + nR2));
 		}
-		tN += nN; tQ += nQ; tR += nR + sz_meta; tR2 += nR2; tQ2 += nQ2;
+		if (_use_names)
+			tN += nN; 
+		tQ += nQ; tR += nR + sz_meta; tR2 += nR2; tQ2 += nQ2;
 	}
 	bin_free (&(t->bin));
-
 	
 	if (t->output == -1) {
 		int32_t x = MAXBIN - 1;

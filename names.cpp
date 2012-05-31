@@ -7,8 +7,10 @@
 
 /* encode read name. discards everything after first space */
 int output_name (char* name, uint8_t *dest) {
-	if (!_use_names)
-		return 0;
+	if (!_use_names) {
+		dest[0] = 0;
+		return 1;
+	}
 
 	int i;
 	for (i = 1; name[i] != 0 && name[i] != '\n' && name[i] != ' '; i++)

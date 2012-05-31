@@ -28,7 +28,7 @@ void MEM(char *A);
 	fprintf(stderr, "[%02d:%02d:%02d]: "c, TIME/3600, (TIME/60)%60, TIME%60, ##__VA_ARGS__)
 #else 
 #define LOG(c,...) fprintf(stderr,c,##__VA_ARGS__)
-#define DLOG(c,...) fprintf(stderr,c,##__VA_ARGS__)
+#define DLOG(c,...) //fprintf(stderr,c,##__VA_ARGS__)
 #endif
 #define ERROR(c,...)\
 	{ fprintf (stderr, "(ERROR) "c, ##__VA_ARGS__); exit (1); }

@@ -37,10 +37,6 @@ DESCRIPTION
 		Discard original read names, and rename each read with the
 		library prefix, such as library.1, library.2, ....
 
-	-i, --interleaved
-		Use this option when you want the paired-end FASTQ files to be in 
-		interleaved format.
-
 	Utility arguments:
 	
 	-h, --help

@@ -48,7 +48,7 @@ void check_arguments (char **files, int length, int mode) {
 	if (!_use_names && strlen (_library_name) == 0)
 		ERROR("No library name specified.\n");
 	if (mode == 1 && length > 1) 
-		ERROR ("Too many files specified (decompression onyl supports one file).\n");
+		ERROR ("Too many files specified (decompression only supports one file).\n");
 	if (_quality_lossy_percentage < 0 || _quality_lossy_percentage > 100)
 		ERROR ("Percentage must be in range [0,100].\n");
 	if (!strcmp (_output_path, "-") && !(_interleave && mode))
@@ -96,7 +96,7 @@ int main (int argc, char **argv) {
 		{ "output",            1, NULL, 'o' },
 		{ "sample-size",       1, NULL, 's' },
 		{ "patterns",          1, NULL, 'P' },
-		{ "interleave",        0, NULL, 'i' },
+	//	{ "interleave",        0, NULL, 'i' },
 		{ "temp-directory",    1, NULL, 't' },
 		{ "bucket-set-size",   1, NULL, 'B' },
 		{ "paired-end",        0, NULL, 'r' },
@@ -107,7 +107,7 @@ int main (int argc, char **argv) {
 		{ NULL,                0, NULL,  0  }
 	};
 	do {
-		opt = getopt_long (argc, argv, "vhp:b:T:dc:o:s:P:t:B:rin:S:", long_opt, NULL);
+		opt = getopt_long (argc, argv, "vhp:b:T:dc:o:s:P:t:B:rn:S:"/*"i"*/, long_opt, NULL);
 		switch (opt) {
 			case 'v':
 			//	LOG("%s\n",SCALCE_VERSION);
@@ -115,9 +115,9 @@ int main (int argc, char **argv) {
 			case 'h':
 				help ();
 				break;
-			case 'i':
-				_interleave = 1;
-				break;
+		//	case 'i':
+		//		_interleave = 1;
+		//		break;
 			case 'c':
 				if (!strcmp (optarg, "bz"))
 					_compression_mode = IO_BZIP;

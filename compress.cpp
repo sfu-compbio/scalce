@@ -472,9 +472,6 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 		int64_t file_reads = 0;  /* read count for this file */
 
 
-		LOG("Memory alloc'd: %.2lf\n", getmemx());
-
-
 		int d_idx = 0; 
 		char done = 0;
 		while (1) {
@@ -544,15 +541,12 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 			f_close (f + fi);
 		LOG("\tDone with file %s, %lld reads found\n", files[i], file_reads);
 		if (use_only_second_file)
-			LOG("\t     also file %s with %lld reads\n", get_second_file (files[i]), file_reads); 
+			LOG("\t          file %s, %lld reads found\n", get_second_file (files[i]), file_reads); 
 	}
 
 	/* clean all stuff */
-//	LOG("> Memory alloc'd: %.2lf\n", getmemx());
-	
 	if (total_size)
 		dump_trie (temp_file_count++, trie);
-//	LOG("< Memory alloc'd: %.2lf\n", getmemx());
 	for (int fi = 0; fi < use_only_second_file + 1; fi++)
 		f_free (f + fi);
 	DLOG("\tDone!\n");

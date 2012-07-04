@@ -8,8 +8,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-
-#include <omp.h>
+#include <pthread.h>
 
 #include "const.h"
 #include "buffio.h"
@@ -401,8 +400,65 @@ void get_quality_stats (buffered_file *f, char *path, quality_mapping *qmap) {
 	for (int i = 0; i < (_use_second_file | _interleave) + 1; i++)
 		LOG("\tPaired end #%d, quality offset: %d\n"
 			 "\t               read length: %d\n", i+1, qmap[i].offset, read_length[i]);
-
 }
+
+/************************/
+
+struct fastq_rec {
+	char read[MAXLINE],
+		  name[MAXLINE],
+		  qual[MAXLINE],
+		  read2[MAXLINE],
+		  qual2[MAXLINE];
+
+	uint8_t out[5 * MAXLINE];
+	int size;
+} *fastq_recs;
+
+static pthread_t *threads;
+static pthread_mutex_t w_mutex;
+static int *thread_index;
+
+aho_trie *trie;
+quality_mapping qmap[2];
+
+void *thread (void *vt) {
+	int t = *(int*)vt;
+	
+	read_data rd;
+	rd.data = fastq_recs[t].out;
+
+	aho_trie *bucket;
+	int n = aho_search(fastq_recs[t].read, trie, &bucket);
+
+	rd.sz = output_name(fastq_recs[t].name, rd.data);
+	if (n != -1) {
+		rd.sz += output_read(fastq_recs[t].read, rd.data + rd.sz, n - bucket->level + 1, bucket->level);
+		rd.end = n + 1;
+	}
+	else {
+		rd.sz += output_read(fastq_recs[t].read, rd.data + rd.sz, 0, 0);
+		rd.end = 0;
+	}
+	rd.sz += output_quality(fastq_recs[t].qual, fastq_recs[t].read, qmap + 0, rd.data + rd.sz, 0);
+	rd.of = rd.sz;
+	if (_use_second_file || _interleave) {
+		rd.sz += output_read(fastq_recs[t].read2, rd.data + rd.sz, 0, 0);
+		rd.sz += output_quality(fastq_recs[t].qual2, fastq_recs[t].read2, qmap + 1, rd.data + rd.sz, 1);
+	}
+
+	fastq_recs[t].size = rd.sz + sizeof(bin_node);
+
+	pthread_mutex_lock(&w_mutex);
+	bin_node *bn = aho_trie_bucket (bucket, &rd);
+	pthread_mutex_unlock(&w_mutex);
+
+	memcpy (bn->data.data, rd.data, rd.sz);
+
+	return 0;
+}
+
+/************************/
 
 void compress (char **files, int nf, const char *output, const char *pattern_path) {
 	char line[MAXLINE], read[2][MAXLINE];
@@ -412,14 +468,18 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	LOG("Buffer size: %lldK, bucket storage size: %lldK\n", _file_buffer_size/1024, _max_bucket_set_size/1024);
 
 
+	int Ts, Te;
+
 	/* initialize the trie */
 	DLOG ("Reading core strings ... ");
-	aho_trie *trie = pattern_path[0] ? read_patterns_from_file(pattern_path) : read_patterns ();
-	DLOG ("OK\n");
+	Ts = TIME;
+	trie = pattern_path[0] ? read_patterns_from_file(pattern_path) : read_patterns ();
+	DLOG ("OK %d sec\n", TIME-Ts);
 
 
 	/* initialize basic variables */
 	LOG ("Preprocessing FASTQ files ...\n");
+	Ts = TIME;
 	uint64_t total_size = 0;     /* current working set size in bytes */
 	int temp_file_count = 0;    
 	int64_t original_size = 0;   /* size of input files, combined */
@@ -428,17 +488,13 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	if (_interleave)             /* all auxiliray functions will behave as in second file mode */
 		_use_second_file = 1;
 
-	aho_trie **buckets = (aho_trie**) mallox (_thread_count * sizeof(aho_trie*));
-	char ****data = (char****) mallox (_thread_count * sizeof(char*));
-	read_data *rdat = (read_data*) mallox (_thread_count * sizeof (read_data));
-	for(int t = 0; t < _thread_count; t++) {
-		rdat[t].data = (uint8_t*) mallox (5 * MAXLINE);
-		data[t] = (char***) mallox (2 * sizeof(char*));
-		data[t][0] = (char**) mallox (3 * sizeof (char*));
-		data[t][1] = (char**) mallox (3 * sizeof (char*));
-		for (int i=0; i<6; i++)
-			data[t][i/3][i%3] = (char*) mallox (MAXLINE * sizeof (char));
-	}
+	/* init threading */
+	fastq_recs = (fastq_rec*) mallox(_thread_count * sizeof(fastq_rec));
+	threads = (pthread_t*) mallox(sizeof(pthread_t) * _thread_count);
+	thread_index = (int*) mallox(_thread_count * sizeof(int));
+	for (int i = 0; i < _thread_count; i++)
+		thread_index[i] = i;
+	pthread_mutex_init(&w_mutex, 0);
 
 	/* initialize the files */
 	for (int i = 0; i < MAXOPENFILES; i++)
@@ -449,12 +505,14 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 		f_init (f + 1, IO_GZIP);
 
 	/* obtain quality tables and stats */
-	quality_mapping qmap[2];
 	get_quality_stats (f, files[0], qmap);
+	LOG("OK, %d sec\n", TIME-Ts);
 
 	LOG("Using %d threads...\n", _thread_count);
 
 	/* iterate through files */
+	Ts=TIME;
+	int Tfile = 0;
 	for (int i = 0; i < nf; i++) {
 		/* open files */
 		for (int fi = 0; fi < use_only_second_file + 1; fi++) {
@@ -472,65 +530,47 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 		int64_t file_reads = 0;  /* read count for this file */
 
 
-		int d_idx = 0; 
+		int t = 0; 
 		char done = 0;
 		while (1) {
-			if (!f_gets (f + 0, data[d_idx][0][0], MAXLINE)) {
+			Te=TIME;
+			if (!f_gets(f, fastq_recs[t].name, MAXLINE)) {
 				done = 1;
 			}
 			if (!done) {
-				f_gets (f + 0, data[d_idx][0][1], MAXLINE);
-				f_gets (f + 0, data[d_idx][0][2], MAXLINE);
-				f_gets (f + 0, data[d_idx][0][2], MAXLINE);
+			//	f_gets(f, fastq_recs[t].name, MAXLINE);
+				f_gets(f, fastq_recs[t].read, MAXLINE);
+				f_gets(f, fastq_recs[t].qual, MAXLINE);
+				f_gets(f, fastq_recs[t].qual, MAXLINE);
 				buffered_file *fn = (_interleave ? f : (_use_second_file ? f + 1 : 0));
 				if (fn) {
-					f_gets (fn, data[d_idx][1][0], MAXLINE);
-					f_gets (fn, data[d_idx][1][1], MAXLINE);
-					f_gets (fn, data[d_idx][1][2], MAXLINE);
-					f_gets (fn, data[d_idx][1][2], MAXLINE);
+					f_gets(f, fastq_recs[t].read2, MAXLINE);
+					f_gets(f, fastq_recs[t].read2, MAXLINE);
+					f_gets(f, fastq_recs[t].qual2, MAXLINE);
+					f_gets(f, fastq_recs[t].qual2, MAXLINE);
 				}
-
-				d_idx++;
+				t++;
 			}
+			Tfile+=TIME-Te;
 
-			if (d_idx == _thread_count || done) {
-				#pragma omp parallel for reduction(+:total_size) num_threads(_thread_count) 
-				for (int t = 0; t < d_idx; t++) {
-					uint8_t *out = rdat[t].data;
 
-					int n = aho_search (data[t][0][1], trie, &(buckets[t]));
-
-					int64_t sz = output_name (data[t][0][0], out);
-					if (n != -1) {
-						sz += output_read (data[t][0][1], out + sz, n-buckets[t]->level+1, buckets[t]->level);
-					//	rdat[t].end = n-buckets[t]->level+1;
-						rdat[t].end = n + 1;
-					}
-					else {
-						sz += output_read (data[t][0][1], out + sz, 0, 0);
-						rdat[t].end = 0; //read_length[0];
-					}
-					sz += output_quality(data[t][0][2], data[t][0][1], qmap + 0, out + sz,0);
-					int64_t of2 = sz;
-					if (_use_second_file || _interleave) {
-						sz += output_read    (data[t][1][1], out + sz, 0, 0);
-						sz += output_quality (data[t][1][2], data[t][1][1], qmap + 1, out + sz,1);
-					}
-
-					rdat[t].of = of2;
-					rdat[t].sz = sz;
-					aho_trie_bucket (buckets[t], rdat + t);
-
-					total_size += sizeof(bin_node) + sz;
+			if (t == _thread_count || done) {
+				for (int ti = 0; ti < t; ti++)
+					pthread_create(&threads[ti], 0, thread, (void*)&thread_index[ti]);
+				for (int ti = 0; ti < t; ti++) {
+					pthread_join (threads[ti], 0);
+					total_size += fastq_recs[ti].size;
 				}
-				
-				reads_count += d_idx;
-				file_reads  += d_idx;
-				d_idx = 0;
 
-				if (total_size >= _max_bucket_set_size) {
+				reads_count += t;
+				file_reads  += t;
+				t = 0;
+
+				if (total_size >= _max_bucket_set_size - _thread_count * (5 * MAXLINE + sizeof(bin_node))) {
 					total_size = 0;
+					Te=TIME;
 					dump_trie (temp_file_count++, trie);
+					Tfile+=TIME-Te;
 				}
 			}
 
@@ -545,13 +585,17 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	}
 
 	/* clean all stuff */
+	Te=TIME;
 	if (total_size)
 		dump_trie (temp_file_count++, trie);
 	for (int fi = 0; fi < use_only_second_file + 1; fi++)
 		f_free (f + fi);
 	DLOG("\tDone!\n");
+	Tfile+=TIME-Te;
 
 
+	LOG("Time total %ds, file %ds, other %ds\n", TIME-Ts, Tfile, TIME-Ts-Tfile);
+	LOG("\t>>>Time elapsed: %02d:%02d:%02d\n", TIME/3600, (TIME/60)%60, TIME%60);
 
 	/* merge */
 	LOG("Merging results ...\n");
@@ -559,7 +603,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 	/* compress and output */
 	int scalce_preprocessing_time = TIME;
-	int64_t new_size = combine_and_compress_with_split (temp_file_count-1, output, (_split_reads ? _split_reads : reads_count), qmap[0].offset);
+	int64_t new_size = 0; //combine_and_compress_with_split (temp_file_count-1, output, (_split_reads ? _split_reads : reads_count), qmap[0].offset);
 
 	/* cleaning again */
 	LOG("Cleaning ...\n");
@@ -567,6 +611,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	remove(_temp_directory);
 	for (int i = 0; i < MAXOPENFILES; i++)
 		f_free (file_pool + i);
+	pthread_mutex_destroy(&w_mutex);
 
 	/* print useful stats */
 	LOG("Statistics:\n");

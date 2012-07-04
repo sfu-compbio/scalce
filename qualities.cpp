@@ -121,52 +121,27 @@ void quality_mapping_init (quality_mapping *q, buffered_file *f, int *read_lengt
 }
 
 int output_quality (char* line, char *read, quality_mapping *q, uint8_t *dest, int ZZ) {
-	static uint32_t prev[2][3] = { {500, 500, 500 }, {500,500,500} };
+	static uint32_t prev[2][3] = { { 500, 500, 500 }, 
+		                            { 500, 500, 500 } };
 
-//	uint8_t ch[4], ch_c = 0;
 	int bc = 0, l = 0;
 	while (line[l]) {
-//		if (read[l] == 'N' && line[l] != q->offset) {
-//			fprintf(stderr,"DZEMO VOLI DZEM (N,%c,%c)\n",line[l],q->offset);
-//			abort();
-//		}
-		dest[bc++] = (read[l] == 'N' ? q->offset : q->values[line[l]]) - q->offset;
-		l++;
-/*		if (ch_c == 4 || !line[l]) {
-			dest[bc++] = (ch[0] << 2) | (ch[1] >> 4);
-			dest[bc++] = (ch[1] << 4) | (ch[2] >> 2);
-			dest[bc++] = (ch[2] << 6) | (ch[3]);	
-
-			uint8_t *o=dest; int i=bc-3;
-			assert(ch[0] == (o[i] >> 2));
-			assert(ch[1] == ( ((o[i + 0] << 4) | (o[i + 1] >> 4)) & 0x3f ));
-			assert(ch[2] == ( ((o[i + 1] << 2) | (o[i + 2] >> 6)) & 0x3f ));
-			assert(ch[3] == (o[i + 2] & 0x3f));
-
-			ch[0] = ch[1] = ch[2] = ch[3] = ch_c = 0;
-		}*/
-	}
-//	assert(bc==75);
-	for (int i = 0; i < bc; i++) {
-//		ac_freq1[dest[i]]++;
+		dest[bc] = (read[l] == 'N' ? q->offset : q->values[line[l]]) - q->offset;
 		if (prev[ZZ][1] < 256) {
-//			ac_freq2[prev[2]][dest[i]]++;
-			ac_freq3[ZZ][prev[ZZ][1]*AC_DEPTH + dest[i]]++;
+			ac_freq3[ZZ][prev[ZZ][1]*AC_DEPTH + dest[bc]]++;
 			if (prev[ZZ][0] < 256) 
-				ac_freq4[ZZ][(prev[ZZ][0]*AC_DEPTH + prev[ZZ][1])*AC_DEPTH+dest[i]]++;
+				ac_freq4[ZZ][(prev[ZZ][0]*AC_DEPTH + prev[ZZ][1])*AC_DEPTH+dest[bc]]++;
 		}
-		else { // (prev[2] >= 256) {
+		else { 
 			for (int e = 0; e < AC_DEPTH; e++)
-				for (int j = 0; j < AC_DEPTH; j++) {
-					for (int l = 0; l < AC_DEPTH; l++) {
+				for (int j = 0; j < AC_DEPTH; j++)
+					for (int l = 0; l < AC_DEPTH; l++)
 						ac_freq4[ZZ][(e*AC_DEPTH + j)*AC_DEPTH+l] = 1;
-					}
-				}
 		}
 		prev[ZZ][0] = prev[ZZ][1];
-//		prev[1] = prev[2];
-		prev[ZZ][1] = dest[i];
-//		ac_sz++;
+		prev[ZZ][1] = dest[bc];
+		bc++;
+		l++;
 	}
 	return bc;
 }

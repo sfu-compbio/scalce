@@ -3,12 +3,7 @@
 #include <string.h>
 #include "const.h"
 
-int tbl[] ={ 0,0,1,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0 };
-
-int getval (char c) {
-	return tbl[c-'A'];
-	//	return (c == 'C' ? 1 : (c == 'G' ? 2 : (c == 'T' ? 3 : 0)));
-}
+int _tbl[] ={ 0,0,1,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0 };
 
 char *get_second_file (const char *c) {
 	static char buf[MAXLINE];
@@ -49,18 +44,18 @@ void MEM(char *A){
 
 static uint64_t mem_usg = 0;
 void *mallox (size_t size) {
-	//mem_usg += size;
+	mem_usg += size;
 	void *v = malloc(size);
 
 	if (!v) { ERROR("mallox failed whoa whoa whoa!\n");  return 0; }
 	else return v;
 }
 void frex (void *ptr, size_t size) {
-	//mem_usg -= size;
+	mem_usg -= size;
 	free(ptr);
 }
 double getmemx () {
-	return mem_usg / 1048576.0;
+	return mem_usg / (1024*1024.0);
 }
 
 

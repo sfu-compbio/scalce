@@ -14,6 +14,18 @@ static int pattern_c = 0;
 
 void bin_prepare (aho_trie *t);
 
+uint8_t  *_pool;
+uint64_t _pool_pos;
+void *getpool (uint64_t sz) {
+	void *p = _pool + _pool_pos;
+	_pool_pos += sz;
+	if (_pool_pos >= _max_bucket_set_size)ERROR("pool inconsistent");
+	return p;
+}
+void clrpool () {
+	_pool_pos = 0;
+}
+
 /* initialize bin */
 void bin_init (bin *b) {
 	b->first = b->last = 0;
@@ -22,34 +34,16 @@ void bin_init (bin *b) {
 
 /* insert read_data into bin (linked list) */
 void bin_insert (bin *b, read_data *d) {
-	bin_node *n  = (bin_node*) mallox (sizeof (struct bin_node));
-	n->data = *d;
-	n->data.data = (uint8_t*) mallox (d->sz * sizeof (uint8_t));
-	memcpy (n->data.data, d->data, d->sz);
-	n->next = 0;
-
-	#pragma omp critical 
-	{
-		if (b->size == 0)
-			b->first = b->last = n;
-		else {
-			b->last->next = n;
-			b->last = n;
-		}
-		b->size++;
-	}
 }
 
 /* safely dispose bin */
 void bin_free (bin *b) {
-	if (b->size) for (bin_node *n = b->first; n; ) {
-		bin_node *x = n->next;
-
-		frex(n->data.data, sizeof(uint8_t)*n->data.sz);
-		frex(n, sizeof(struct bin_node));
-
-		n = x;
-	}
+//	if (b->size) for (bin_node *n = b->first; n; ) {
+//		bin_node *x = n->next;
+//		frex(n->data.data, sizeof(uint8_t)*n->data.sz);
+//		frex(n, sizeof(struct bin_node));
+//		n = x;
+//	}
 	b->first = b->last = 0;
 	b->size = 0;
 }
@@ -160,12 +154,23 @@ void aho_trie_init (aho_trie *t) {
 }
 
 /* bucket one read */
-void aho_trie_bucket (aho_trie *t, read_data *d) {
-	bin_insert (&(t->bin), d);
-	#pragma omp critical 
-	{
-		t->bin_size++;
+bin_node *aho_trie_bucket (aho_trie *t, read_data *d) {
+	bin_node *n = (bin_node*) getpool(sizeof(struct bin_node));
+	n->data = *d;
+	n->data.data = (uint8_t*) getpool(d->sz * sizeof(uint8_t));
+	n->next = 0;
+
+	if (t->bin.size == 0)
+		t->bin.first = t->bin.last = n;
+	else {
+		t->bin.last->next = n;
+		t->bin.last = n;
 	}
+	t->bin.size++;
+	t->bin_size++;
+	
+//	memcpy (n->data.data, d->data, d->sz);
+	return n;
 }
 
 /* insert core string into trie */
@@ -235,6 +240,11 @@ void prepare_aho_automata (aho_trie *root) {
 
 	trie_queue_free (&q);
 	visited = (char*) mallox ((nodes_count + 1) * sizeof (char));
+
+	LOG("Allocating pool... ");
+	_pool_pos = 0;
+	_pool = (uint8_t*) mallox(_max_bucket_set_size);
+	LOG("OK!\n");
 }
 
 /* read core strings and create trie and aho automaton */
@@ -323,7 +333,6 @@ aho_trie *read_patterns_from_file (const char *path) {
 /* search for core strings in the read */
 int aho_search (char *text, aho_trie *root, aho_trie **bucket) {
 	aho_trie *cur = root, *largest = 0, *x;
-
 	int bestpos = -1;
 	for (int i = 0; text[i] != 0 && text[i] != '\n'; i++) {
 		cur = cur->child[getval (text[i])];
@@ -406,6 +415,7 @@ void aho_output (aho_trie *root, buffered_file *f) {
 		bin_dump (root, f);
 	}
 
+	clrpool();
 	trie_queue_free (&q);
 }
 

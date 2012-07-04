@@ -70,10 +70,11 @@ extern char      _interleave;
 extern int32_t read_length[2];                 /* length of read in one fastq file */
 extern int64_t reads_count;                /* total read count in all input files */
 
-int getval (char c);
 char *get_second_file (const char *c);
 void *mallox (size_t size);
 void frex (void *ptr, size_t size);
 double getmemx ();
 
+extern int _tbl[];// ={ 0,0,1,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0 };
+#define getval(c) (_tbl[c-'A'])
 #endif // CONST_H__

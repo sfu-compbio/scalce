@@ -125,7 +125,7 @@ int output_quality (char* line, char *read, quality_mapping *q, uint8_t *dest, i
 		                            { 500, 500, 500 } };
 
 	int bc = 0, l = 0;
-	while (line[l]) {
+	while (line[l] != '\n') {
 		dest[bc] = (read[l] == 'N' ? q->offset : q->values[line[l]]) - q->offset;
 		if (prev[ZZ][1] < 256) {
 			ac_freq3[ZZ][prev[ZZ][1]*AC_DEPTH + dest[bc]]++;

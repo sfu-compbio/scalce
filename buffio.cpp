@@ -116,8 +116,8 @@ char f_alive (buffered_file *f) {
 }
 
 int64_t f_write (buffered_file *f, void *c, int64_t sz) {
-	if (f->mode == 0 || !f_alive (f))
-		ERROR ("Invalid file handle (closed or opened in read mode)");
+//	if (f->mode == 0 || !f_alive (f))
+//		ERROR ("Invalid file handle (closed or opened in read mode)");
 
 	int64_t wp = 0;
 	while (sz >= f->bufsz - f->bufpos) {
@@ -136,8 +136,8 @@ int64_t f_write (buffered_file *f, void *c, int64_t sz) {
 }
 
 int64_t f_read (buffered_file *f, void *c, int64_t sz) {
-	if (f->mode == 1 || !f_alive (f))
-		ERROR ("Invalid file handle (closed or opened in write mode)");
+//	if (f->mode == 1 || !f_alive (f))
+//		ERROR ("Invalid file handle (closed or opened in write mode)");
 
 	int64_t rp = 0;
 	while (sz - rp >= f->bufend - f->bufpos) {

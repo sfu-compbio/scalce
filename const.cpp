@@ -1,5 +1,7 @@
 /// 786
 
+#include <time.h>
+#include <sys/time.h>
 #include <string.h>
 #include "const.h"
 
@@ -19,6 +21,13 @@ char *get_second_file (const char *c) {
 
 	return buf;
 }
+int _TIME_()
+{
+	struct timeval t;
+	gettimeofday(&t,0);
+	return (t.tv_sec*1000000+t.tv_usec);
+}
+
 
 int parseLine(char* line){
 	int i = strlen(line);

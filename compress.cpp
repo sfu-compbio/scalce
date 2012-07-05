@@ -412,50 +412,83 @@ struct fastq_rec {
 		  qual2[MAXLINE];
 
 	uint8_t out[5 * MAXLINE];
-	int size;
 } *fastq_recs;
 
 static pthread_t *threads;
-static pthread_mutex_t w_mutex;
+static pthread_spinlock_t r_spin;
+static pthread_spinlock_t w_spin;
 static int *thread_index;
 
 aho_trie *trie;
 quality_mapping qmap[2];
+buffered_file f[2];
+int temp_file_count = 0;    
+uint64_t total_size, file_reads;
+
+bool file_working;
+
+int Tfile;
 
 void *thread (void *vt) {
 	int t = *(int*)vt;
-	
+
+	fastq_rec fr;
 	read_data rd;
-	rd.data = fastq_recs[t].out;
+	rd.data = fr.out;
 
-	aho_trie *bucket;
-	int n = aho_search(fastq_recs[t].read, trie, &bucket);
+	while (1) {
+		if (total_size >= _max_bucket_set_size) 
+			return 0;
+	
+		pthread_spin_lock(&r_spin);
+		int Ts=TIME;
+		char *fs = f_gets(f, fr.name, MAXLINE);
+		if (fs) {
+			f_gets(f, fr.read, MAXLINE);
+			f_gets(f, fr.qual, MAXLINE);
+			f_gets(f, fr.qual, MAXLINE);
+			buffered_file *fn = (_interleave ? f : (_use_second_file ? f + 1 : 0));
+			if (fn) {
+				f_gets(f, fr.read2, MAXLINE);
+				f_gets(f, fr.read2, MAXLINE);
+				f_gets(f, fr.qual2, MAXLINE);
+				f_gets(f, fr.qual2, MAXLINE);
+			}
+		}
+		else file_working = 0;
+		Tfile+=TIME-Ts;
+		pthread_spin_unlock(&r_spin);
+		if (!fs) return 0;
 
-	rd.sz = output_name(fastq_recs[t].name, rd.data);
-	if (n != -1) {
-		rd.sz += output_read(fastq_recs[t].read, rd.data + rd.sz, n - bucket->level + 1, bucket->level);
-		rd.end = n + 1;
+		aho_trie *bucket;
+		int n = aho_search(fr.read, trie, &bucket);
+
+		rd.sz = output_name(fr.name, rd.data);
+		if (n != -1) {
+			rd.sz += output_read(fr.read, rd.data + rd.sz, n - bucket->level + 1, bucket->level);
+			rd.end = n + 1;
+		}
+		else {
+			rd.sz += output_read(fr.read, rd.data + rd.sz, 0, 0);
+			rd.end = 0;
+		}
+		rd.sz += output_quality(fr.qual, fr.read, qmap + 0, rd.data + rd.sz, 0);
+		rd.of = rd.sz;
+		if (_use_second_file || _interleave) {
+			rd.sz += output_read(fr.read2, rd.data + rd.sz, 0, 0);
+			rd.sz += output_quality(fr.qual2, fr.read2, qmap + 1, rd.data + rd.sz, 1);
+		}
+
+		pthread_spin_lock(&w_spin);
+		Ts=TIME;
+		file_reads++;
+		bin_node *bn = aho_trie_bucket (bucket, &rd);
+		total_size += rd.sz + sizeof(bin_node);
+		Tfile+=TIME-Ts;
+		pthread_spin_unlock(&w_spin);
+		
+		memcpy (bn->data.data, rd.data, rd.sz);
 	}
-	else {
-		rd.sz += output_read(fastq_recs[t].read, rd.data + rd.sz, 0, 0);
-		rd.end = 0;
-	}
-	rd.sz += output_quality(fastq_recs[t].qual, fastq_recs[t].read, qmap + 0, rd.data + rd.sz, 0);
-	rd.of = rd.sz;
-	if (_use_second_file || _interleave) {
-		rd.sz += output_read(fastq_recs[t].read2, rd.data + rd.sz, 0, 0);
-		rd.sz += output_quality(fastq_recs[t].qual2, fastq_recs[t].read2, qmap + 1, rd.data + rd.sz, 1);
-	}
-
-	fastq_recs[t].size = rd.sz + sizeof(bin_node);
-
-	pthread_mutex_lock(&w_mutex);
-	bin_node *bn = aho_trie_bucket (bucket, &rd);
-	pthread_mutex_unlock(&w_mutex);
-
-	memcpy (bn->data.data, rd.data, rd.sz);
-
-	return 0;
 }
 
 /************************/
@@ -468,7 +501,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	LOG("Buffer size: %lldK, bucket storage size: %lldK\n", _file_buffer_size/1024, _max_bucket_set_size/1024);
 
 
-	int Ts, Te;
+	int Ts;
 
 	/* initialize the trie */
 	DLOG ("Reading core strings ... ");
@@ -480,8 +513,6 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	/* initialize basic variables */
 	LOG ("Preprocessing FASTQ files ...\n");
 	Ts = TIME;
-	uint64_t total_size = 0;     /* current working set size in bytes */
-	int temp_file_count = 0;    
 	int64_t original_size = 0;   /* size of input files, combined */
 
 	char use_only_second_file = _use_second_file;        /* we need original _use... variable for simplification */
@@ -494,12 +525,12 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	thread_index = (int*) mallox(_thread_count * sizeof(int));
 	for (int i = 0; i < _thread_count; i++)
 		thread_index[i] = i;
-	pthread_mutex_init(&w_mutex, 0);
+	pthread_spin_init(&r_spin, 0);
+	pthread_spin_init(&w_spin, 0);
 
 	/* initialize the files */
 	for (int i = 0; i < MAXOPENFILES; i++)
 		f_init (file_pool + i, IO_SYS);
-	buffered_file f[2];
 	f_init (f + 0, IO_GZIP);
 	if (use_only_second_file)
 		f_init (f + 1, IO_GZIP);
@@ -511,8 +542,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	LOG("Using %d threads...\n", _thread_count);
 
 	/* iterate through files */
-	Ts=TIME;
-	int Tfile = 0;
+	Ts=0;
 	for (int i = 0; i < nf; i++) {
 		/* open files */
 		for (int fi = 0; fi < use_only_second_file + 1; fi++) {
@@ -527,56 +557,23 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 			original_size += s.st_size;
 		}
 
-		int64_t file_reads = 0;  /* read count for this file */
+		file_reads = 0;  /* read count for this file */
+		file_working = 1;
+		while (file_working) {
+			int T=TIME;
+			for (int ti = 0; ti < _thread_count; ti++)
+				pthread_create(&threads[ti], 0, thread, (void*)&thread_index[ti]);
+			for (int ti = 0; ti < _thread_count; ti++)
+				pthread_join (threads[ti], 0);
+			Ts+=TIME-T;
 
-
-		int t = 0; 
-		char done = 0;
-		while (1) {
-			Te=TIME;
-			if (!f_gets(f, fastq_recs[t].name, MAXLINE)) {
-				done = 1;
+			if (total_size >= _max_bucket_set_size) {
+				dump_trie(temp_file_count++, trie);
+				total_size = 0;
 			}
-			if (!done) {
-			//	f_gets(f, fastq_recs[t].name, MAXLINE);
-				f_gets(f, fastq_recs[t].read, MAXLINE);
-				f_gets(f, fastq_recs[t].qual, MAXLINE);
-				f_gets(f, fastq_recs[t].qual, MAXLINE);
-				buffered_file *fn = (_interleave ? f : (_use_second_file ? f + 1 : 0));
-				if (fn) {
-					f_gets(f, fastq_recs[t].read2, MAXLINE);
-					f_gets(f, fastq_recs[t].read2, MAXLINE);
-					f_gets(f, fastq_recs[t].qual2, MAXLINE);
-					f_gets(f, fastq_recs[t].qual2, MAXLINE);
-				}
-				t++;
-			}
-			Tfile+=TIME-Te;
-
-
-			if (t == _thread_count || done) {
-				for (int ti = 0; ti < t; ti++)
-					pthread_create(&threads[ti], 0, thread, (void*)&thread_index[ti]);
-				for (int ti = 0; ti < t; ti++) {
-					pthread_join (threads[ti], 0);
-					total_size += fastq_recs[ti].size;
-				}
-
-				reads_count += t;
-				file_reads  += t;
-				t = 0;
-
-				if (total_size >= _max_bucket_set_size - _thread_count * (5 * MAXLINE + sizeof(bin_node))) {
-					total_size = 0;
-					Te=TIME;
-					dump_trie (temp_file_count++, trie);
-					Tfile+=TIME-Te;
-				}
-			}
-
-			if (done) break;
 		}
-
+		reads_count += file_reads;
+	
 		for (int fi = 0; fi < use_only_second_file + 1; fi++)
 			f_close (f + fi);
 		LOG("\tDone with file %s, %lld reads found\n", files[i], file_reads);
@@ -585,21 +582,17 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	}
 
 	/* clean all stuff */
-	Te=TIME;
 	if (total_size)
 		dump_trie (temp_file_count++, trie);
 	for (int fi = 0; fi < use_only_second_file + 1; fi++)
 		f_free (f + fi);
 	DLOG("\tDone!\n");
-	Tfile+=TIME-Te;
 
-
-	LOG("Time total %ds, file %ds, other %ds\n", TIME-Ts, Tfile, TIME-Ts-Tfile);
-	LOG("\t>>>Time elapsed: %02d:%02d:%02d\n", TIME/3600, (TIME/60)%60, TIME%60);
+	LOG("Time total %ds, file %ds, other %ds\n", Ts, Tfile, Ts-Tfile);
 
 	/* merge */
-	LOG("Merging results ...\n");
-	merge (temp_file_count, 8);
+	LOG("Merging results ... %d\n", temp_file_count);
+	merge(temp_file_count, 8);
 
 	/* compress and output */
 	int scalce_preprocessing_time = TIME;
@@ -611,7 +604,8 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	remove(_temp_directory);
 	for (int i = 0; i < MAXOPENFILES; i++)
 		f_free (file_pool + i);
-	pthread_mutex_destroy(&w_mutex);
+	pthread_spin_destroy(&r_spin);
+	pthread_spin_destroy(&w_spin);
 
 	/* print useful stats */
 	LOG("Statistics:\n");

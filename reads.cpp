@@ -19,7 +19,7 @@ uint64_t _pool_pos;
 void *getpool (uint64_t sz) {
 	void *p = _pool + _pool_pos;
 	_pool_pos += sz;
-	if (_pool_pos >= _max_bucket_set_size)ERROR("pool inconsistent");
+	if (_pool_pos >= _max_bucket_set_size+500*MAXLINE)ERROR("pool inconsistent");
 	return p;
 }
 void clrpool () {
@@ -243,7 +243,7 @@ void prepare_aho_automata (aho_trie *root) {
 
 	LOG("Allocating pool... ");
 	_pool_pos = 0;
-	_pool = (uint8_t*) mallox(_max_bucket_set_size);
+	_pool = (uint8_t*) mallox(_max_bucket_set_size + 100*5*MAXLINE);
 	LOG("OK!\n");
 }
 
@@ -334,7 +334,7 @@ aho_trie *read_patterns_from_file (const char *path) {
 int aho_search (char *text, aho_trie *root, aho_trie **bucket) {
 	aho_trie *cur = root, *largest = 0, *x;
 	int bestpos = -1;
-	for (int i = 0; text[i] != 0 && text[i] != '\n'; i++) {
+	for (int i = 0; text[i] != '\n'; i++) {
 		cur = cur->child[getval (text[i])];
 		if (cur->next_to_output) {
 			x = cur->next_to_output;
@@ -355,7 +355,7 @@ int output_read (char *line, uint8_t *dest, int n, int l) {
 	int bc = 0;
 
 	uint8_t ca = 0, cc = 0;
-	for (int i = n + l; line[i]; i++) {
+	for (int i = n + l; line[i] != '\n'; i++) {
 		ca = (ca << 2) | (line[i] ? getval(line[i]): 0);
 		cc++;
 		if (cc == 4) {

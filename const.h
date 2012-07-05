@@ -12,10 +12,11 @@
 
 void MEM(char *A);
 
+int _TIME_();
 
 #define GLOBALBUFSZ  5*MAXLINE
 #define MIN(x,y)  (((x)<(y))?(x):(y))
-#define TIME	(time(0)-_time_elapsed)
+#define TIME	(_TIME_())
 #define SZ_READ(l)\
 	(((l) / 4) + ((l) % 4 > 0))
 #define SZ_QUAL(l)\

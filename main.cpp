@@ -79,7 +79,8 @@ void check_arguments (char **files, int length, int mode) {
 }
 
 int main (int argc, char **argv) {
-	_time_elapsed = time(0);
+	_time_elapsed = 0;
+	_time_elapsed = TIME;
 
 	// set default number of threads
 	_thread_count = sysconf( _SC_NPROCESSORS_ONLN ) - 1;

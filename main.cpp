@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #include <sys/sysinfo.h>
+#include <locale.h>
 
 #include "const.h"
 #include "buffio.h"
@@ -80,6 +81,7 @@ void check_arguments (char **files, int length, int mode) {
 }
 
 int main (int argc, char **argv) {
+	setlocale(LC_ALL,"");
 	_time_elapsed = 0;
 	_time_elapsed = TIME;
 

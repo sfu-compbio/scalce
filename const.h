@@ -34,12 +34,6 @@ int _TIME_();
 #define ERROR(c,...)\
 	{ fprintf (stderr, "(ERROR) "c, ##__VA_ARGS__); exit (1); }
 
-#define IO_READ  0
-#define IO_WRITE 1
-#define IO_SYS   10
-#define IO_GZIP  20
-#define IO_BZIP  30
-#define IO_PGZIP 40
 
 // Max. characters per line
 #define MAXLINE 		2500

@@ -5,10 +5,18 @@
 
 #include "const.h"
 
+#define IO_READ  0
+#define IO_WRITE 1
+#define IO_SYS   10
+#define IO_GZIP  20
+#define IO_BZIP  30
+#define IO_PGZIP 40
+
 typedef int64_t (*fn_rw)    (void*, void*, int64_t);
 typedef int     (*fn_close) (void*);
 typedef int64_t (*fn_open)  (const char*, int, char*);  
 typedef int64_t (*fn_seek)  (void*, int64_t);
+typedef char*   (*fn_gets)  (void*, char*, int64_t);
 
 typedef struct {
 	char file_name[MAXLINE];
@@ -23,6 +31,7 @@ typedef struct {
 	fn_open  my_open;
 	fn_close my_close;
 	fn_seek  my_seek;
+	fn_gets  my_gets;
 } buffered_file;
 
 void     f_init  (buffered_file *f, int algorithm);

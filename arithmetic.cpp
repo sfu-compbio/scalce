@@ -126,8 +126,6 @@ uint8_t ac_decoder::I() {
 	if (!buf_pos) {
 		in++;
 		assert(in-is < buffer_size);
-//		if (f_read(fi, &buffer[Z], 1) != 1)
-//			buffer[Z] = 0;
 		buf_pos = 7;
 	}
 	else buf_pos--;

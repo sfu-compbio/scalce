@@ -26,28 +26,28 @@ void quality_mapping_init (quality_mapping *q, buffered_file *f, int *read_lengt
 	// read sample data
 	for (int i = 0; i < _quality_sample_lines; i++) {
 		if (_interleave == 20) { /* skip first part in interleaved */
-			f_gets (f, line, MAXLINE);
-			f_gets (f, line, MAXLINE);
-			f_gets (f, line, MAXLINE);
-			f_gets (f, line, MAXLINE);
+			f_gets(f, line, MAXLINE);
+			f_gets(f, line, MAXLINE);
+			f_gets(f, line, MAXLINE);
+			f_gets(f, line, MAXLINE);
 		}
 
-		f_gets (f, line, MAXLINE);
-		f_gets (f, line, MAXLINE);
-		f_gets (f, line, MAXLINE);
+		f_gets(f, line, MAXLINE);
+		f_gets(f, line, MAXLINE);
+		f_gets(f, line, MAXLINE);
 		if (!f_gets (f, line, MAXLINE)) 
 			break;
-		int l = strlen (line);
+		int l = strlen (line)-1;
 		for (int j = 0; j < l; j++) {
 			stat[line[j]]++;
 		}
 		(*read_length) = l;
 
 		if (_interleave == 10) { /* skip second part in interleaved */
-			f_gets (f, line, MAXLINE);
-			f_gets (f, line, MAXLINE);
-			f_gets (f, line, MAXLINE);
-			f_gets (f, line, MAXLINE);
+			f_gets(f, line, MAXLINE);
+			f_gets(f, line, MAXLINE);
+			f_gets(f, line, MAXLINE);
+			f_gets(f, line, MAXLINE);
 		}
 	}
 

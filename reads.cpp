@@ -261,7 +261,6 @@ aho_trie *read_patterns () {
 	for(int i=0;i<5000000;i++)
 		patterns[i]=(char*) mallox(15);
 
-
 	char *data = &_binary_patterns_bin_start;
 	int pos = 0;
 	int64_t size = (int64_t)(&_binary_patterns_bin_size);
@@ -300,21 +299,23 @@ aho_trie *read_patterns () {
 
 aho_trie *read_patterns_from_file (const char *path) {
 	aho_trie *root = (aho_trie*) mallox (sizeof (struct aho_trie));
+
+	LOG("file init %s\n", path);
+
 	aho_trie_init (root);
 	char line[MAXLINE];
 	char alphabet[] = "ACGT";
-	patterns = (char**) mallox(5000000*sizeof(char*));
-	for(int i=0;i<5000000;i++)
-		patterns[i]=(char*) mallox(15);
-
+	patterns = (char**) mallox(14000000*sizeof(char*));
+	for(int i=0;i<14000000;i++)
+		patterns[i]=(char*) mallox(18);
 
 	int len;
 	uint64_t val;
 
 	FILE *f = fopen(path, "r");
 	while (fscanf(f, "%d %llu", &len, &val) != EOF) {
-		if (len <= 4) {
-			LOG("\tskipping (%llu,%d)\n", val, len);
+		if (len > 12) {
+		//	LOG("\tskipping (%llu,%d)\n", val, len);
 			continue;
 		}
 		for (int i = 0; i < len; i++) {
@@ -325,7 +326,17 @@ aho_trie *read_patterns_from_file (const char *path) {
 		pattern_insert (patterns[pattern_c], root, 0, pattern_c);
 		pattern_c++;
 	}
-	
+
+	strcpy(patterns[pattern_c], "AAAAAAAAAAAAAAAA");
+	pattern_insert (patterns[pattern_c], root, 0, pattern_c); pattern_c++;
+	strcpy(patterns[pattern_c], "CCCCCCCCCCCCCCCC");
+	pattern_insert (patterns[pattern_c], root, 0, pattern_c); pattern_c++;
+	strcpy(patterns[pattern_c], "GGGGGGGGGGGGGGGG");
+	pattern_insert (patterns[pattern_c], root, 0, pattern_c); pattern_c++;
+	strcpy(patterns[pattern_c], "TTTTTTTTTTTTTTTT");
+	pattern_insert (patterns[pattern_c], root, 0, pattern_c); pattern_c++;
+
+
 	prepare_aho_automata (root);
 	return root;
 }

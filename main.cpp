@@ -12,6 +12,7 @@
 #include <sys/sysinfo.h>
 
 #include "const.h"
+#include "buffio.h"
 #include "compress.h"
 #include "decompress.h"
 

@@ -429,49 +429,32 @@ int Tfile;
 void *thread (void *vt) {
 	int t = *(int*)vt;
 
-	fastq_rec pf;
 	aho_trie *bucket;
 	read_data rd;
 	uint8_t out[MAXLINE*5];
 	rd.data = out;
 
-	int txx;
+	int start = t * (prefetch_cnt / _thread_count);
+	int end = (t + 1) * (prefetch_cnt / _thread_count);
+	if (end > prefetch_cnt) end = prefetch_cnt;
 
-	while(1) {
-		txx=TIME;
-		pthread_spin_lock(&r_spin);
-		if (!f_gets(f, pf.name, MAXLINE)) {
-			pthread_spin_unlock(&r_spin);
-			return 0;;
-		}
-		f_gets(f, pf.read, MAXLINE);
-		f_gets(f, pf.qual, MAXLINE);
-		f_gets(f, pf.qual, MAXLINE);
-		buffered_file *fn = (_interleave ? f : (_use_second_file ? f + 1 : 0));
-		if (fn) {
-			f_gets(fn, pf.read2, MAXLINE);
-			f_gets(fn, pf.read2, MAXLINE);
-			f_gets(fn, pf.qual2, MAXLINE);
-			f_gets(fn, pf.qual2, MAXLINE);
-		}	
-		Tfile+=TIME-txx;
-		pthread_spin_unlock(&r_spin);
-
-		int n = aho_search(pf.read, trie, &bucket);
-		rd.sz = output_name(pf.name, rd.data);
+	//LOG(".>>>.%d--%d to %d\n",t,start,end);
+	for (int i = start; i < end; i++) {
+		int n = aho_search(prefetch[i].read, trie, &bucket);
+		rd.sz = output_name(prefetch[i].name, rd.data);
 		if (n != -1) {
-			rd.sz += output_read(pf.read, rd.data + rd.sz, n - bucket->level + 1, bucket->level);
+			rd.sz += output_read(prefetch[i].read, rd.data + rd.sz, n - bucket->level + 1, bucket->level);
 			rd.end = n + 1;
 		}
 		else {
-			rd.sz += output_read(pf.read, rd.data + rd.sz, 0, 0);
+			rd.sz += output_read(prefetch[i].read, rd.data + rd.sz, 0, 0);
 			rd.end = 0;
 		}
-		rd.sz += output_quality(pf.qual, pf.read, qmap + 0, rd.data + rd.sz, 0);
+		rd.sz += output_quality(prefetch[i].qual, prefetch[i].read, qmap + 0, rd.data + rd.sz, 0);
 		rd.of = rd.sz;
 		if (_use_second_file || _interleave) {
-			rd.sz += output_read(pf.read2, rd.data + rd.sz, 0, 0);
-			rd.sz += output_quality(pf.qual2, pf.read2, qmap + 1, rd.data + rd.sz, 1);
+			rd.sz += output_read(prefetch[i].read2, rd.data + rd.sz, 0, 0);
+			rd.sz += output_quality(prefetch[i].qual2, prefetch[i].read2, qmap + 1, rd.data + rd.sz, 1);
 		}
 
 		pthread_spin_lock(&w_spin);
@@ -482,7 +465,7 @@ void *thread (void *vt) {
 
 		if (total_size >= _max_bucket_set_size) {
 			pthread_spin_lock(&w_spin);
-			txx=TIME;
+			int txx=TIME;
 			dump_trie(temp_file_count++, trie);
 			Tfile+=TIME-txx;
 			total_size = 0;
@@ -543,13 +526,12 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	LOG("Using %d threads...\n", _thread_count);
 
 	/* iterate through files */
-	Ts=TIME;
-	Tfile = 0; int txx;
+	Ts=TIME; int txx;
 	prefetch_cnt = 0;
-	for (int F = 0; F < nf; F++) {
+	for (int i = 0; i < nf; i++) {
 		/* open files */
 		for (int fi = 0; fi < use_only_second_file + 1; fi++) {
-			char *fn = !fi ? files[F] : get_second_file (files[F]); 
+			char *fn = !fi ? files[i] : get_second_file (files[i]); 
 
 			f_open (f + fi, fn, IO_READ); 
 			if (!f_alive (f + fi)) 
@@ -560,21 +542,48 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 			original_size += s.st_size;
 		}
 
-		for (int ti = 0; ti < _thread_count; ti++)
-			pthread_create(&threads[ti], 0, thread, (void*)&thread_index[ti]);
-		for (int ti = 0; ti < _thread_count; ti++)
-			pthread_join (threads[ti], 0);
+		while (1) {
+			txx=TIME;
+			if (!f_gets(f, prefetch[prefetch_cnt].name, MAXLINE)) break;
+			f_gets(f, prefetch[prefetch_cnt].read, MAXLINE);
+			f_gets(f, prefetch[prefetch_cnt].qual, MAXLINE);
+			f_gets(f, prefetch[prefetch_cnt].qual, MAXLINE);
+			buffered_file *fn = (_interleave ? f : (_use_second_file ? f + 1 : 0));
+			if (fn) {
+				f_gets(fn, prefetch[prefetch_cnt].read2, MAXLINE);
+				f_gets(fn, prefetch[prefetch_cnt].read2, MAXLINE);
+				f_gets(fn, prefetch[prefetch_cnt].qual2, MAXLINE);
+				f_gets(fn, prefetch[prefetch_cnt].qual2, MAXLINE);
+			}	
+			Tfile+=TIME-txx;
+			prefetch_cnt++;
+			file_reads++;
+
+			if (prefetch_cnt == prefetch_sz) {
+				for (int ti = 0; ti < _thread_count; ti++)
+					pthread_create(&threads[ti], 0, thread, (void*)&thread_index[ti]);
+				for (int ti = 0; ti < _thread_count; ti++)
+					pthread_join (threads[ti], 0);
+				prefetch_cnt = 0;
+			}
+		}
 
 		reads_count += file_reads;
 
 		for (int fi = 0; fi < use_only_second_file + 1; fi++)
-			f_close (f + fi);
-		LOG("\tDone with file %s, %lld reads found\n", files[F], file_reads);
+			f_close (f+fi);
+		LOG("\tDone with file %s, %lld reads found\n", files[i], file_reads);
 		if (use_only_second_file)
-			LOG("\t          file %s, %lld reads found\n", get_second_file (files[F]), file_reads); 
+			LOG("\t          file %s, %lld reads found\n", get_second_file (files[i]), file_reads); 
 	}
 
 	/* clean all stuff */
+	if (prefetch_cnt) {
+		for (int ti = 0; ti < _thread_count; ti++)
+			pthread_create(&threads[ti], 0, thread, (void*)&thread_index[ti]);
+		for (int ti = 0; ti < _thread_count; ti++)
+			pthread_join (threads[ti], 0);
+	}
 	if (total_size) {
 		txx=TIME;
 		dump_trie (temp_file_count++, trie);
@@ -584,7 +593,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 		f_free (f + fi);
 	DLOG("\tDone!\n");
 
-	LOG("Time total %'d, file %'d, work %'d\n", TIME-Ts, Tfile, TIME-Ts-Tfile);
+	LOG("Time total %'d, file %'d, word %'d\n", TIME-Ts,Tfile,TIME-Ts-Tfile);
 
 	/* merge */
 	LOG("Merging results ... %d\n", temp_file_count);
@@ -617,4 +626,3 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	LOG("\tOriginal size: %.2lfM, new size: %.2lfM, compression factor: %.2lf\n", original_size/(1024.0*1024.4), new_size/(1024.0*1024.0), (original_size/(double)new_size));
 	
 }
-

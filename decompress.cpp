@@ -32,6 +32,7 @@ void decompress (const char *path, const char *out) {
 
 	buffered_file fR[2], fQ[2], fN[2];
 
+	LOG("using %d threads...\n", _thread_count);
 	strncpy ((char*)buffer, (char*)path, MAXLINE);
 	for (int i = 0; i < 1 + (_use_second_file|_interleave); i++) {
 		/* file type detection */
@@ -39,12 +40,15 @@ void decompress (const char *path, const char *out) {
 		FILE *ft = fopen ((char*)buffer, "rb");
 		fread (c, 1, 2, ft);
 		int mode = IO_SYS;
-		if (c[0] == 0x1f && c[1] == 0x8b)
+		if (c[0] == 0x1f && c[1] == 0x8b) {
 			mode = IO_GZIP;
+//			if (_thread_count > 1)
+//				mode = IO_PGZIP;
+		}
 		if (c[0] == 0x42 && c[1] == 0x5a)
 			mode = IO_BZIP;
 		fclose (ft);
-		LOG("Paired-end %d, file format detected: %s\n",i,(mode==IO_GZIP?"gzip":(mode==IO_BZIP?"bzip":"plain")));
+		LOG("Paired-end %d, file format detected: %s\n",i,(mode==IO_GZIP?"gzip":(mode==IO_BZIP?"bzip":(mode==IO_PGZIP?"pigz":"plain"))));
 
 		/* initialization */
 		f_init (fR + i, mode);

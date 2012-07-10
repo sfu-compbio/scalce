@@ -99,7 +99,13 @@ int64_t PZopen (const char *path, int mode, char *c) {
 		dup2 (fd[0], 0); // set stdin to pipe
 		close (fd[0]);
 
-		char* const pl[] = { (char*)"pigz", (char*)"-c", 0 };
+		char* pl[5]; char tmp[20];
+		pl[0] = (char*)"pigz";
+		pl[1] = (char*)"-c";
+		pl[2] = tmp;
+		sprintf(pl[2], "-p%d", _thread_count);
+		pl[3] = (mode ? 0 : (char*)"-d");
+		pl[4] = 0;
 		execvp ("pigz", pl);
 		ERROR ("pigz exec failed");
 		abort();
@@ -115,7 +121,7 @@ int64_t PZopen (const char *path, int mode, char *c) {
 int     PZclose (void* handle)                      { return close ((int64_t)handle); }
 int64_t PZwrite (void* handle, void *c, int64_t sz) { return write ((int64_t)handle, c, sz); }	
 int64_t PZread  (void* handle, void *c, int64_t sz) { return read ((int64_t)handle, c, sz); }
-int64_t PZseek  (void* handle, int64_t l)           { ERROR ("Seek not ssupported with pigz"); }
+int64_t PZseek  (void* handle, int64_t l)           { ERROR("Seek not ssupported with pigz"); }
 char   *PZgets  (void* handle, char *c, int64_t l)  { ERROR("Gets not supported with pigz"); }
 
 char f_alive (buffered_file *f) {

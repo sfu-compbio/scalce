@@ -44,6 +44,9 @@ void help () {
 }
 
 void check_arguments (char **files, int length, int mode) {
+
+
+
 	if (_interleave && _use_second_file)
 		ERROR("Interleaved option (-i) cannot be used with paired-end option (-r).\n");
 	if (strlen (_output_path) == 0)

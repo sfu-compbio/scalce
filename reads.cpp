@@ -258,8 +258,6 @@ aho_trie *read_patterns () {
 	char alphabet[] = "ACGT";
 
 	patterns = (char**) mallox(5000000*sizeof(char*));
-	for(int i=0;i<5000000;i++)
-		patterns[i]=(char*) mallox(15);
 
 	char *data = &_binary_patterns_bin_start;
 	int pos = 0;
@@ -283,7 +281,7 @@ aho_trie *read_patterns () {
 			assert(sz<=8);
 			pos += sz;
 			
-//			patterns[pattern_c] = mallox( ln );
+			patterns[pattern_c] = (char*)mallox(ln  + 1);
 			for(int j = ln - 1; j >= 0; j--)
 				patterns[pattern_c][nl++] = alphabet[ (x >> (2 * j)) & 3 ];
 			patterns[pattern_c][nl++] = 0;
@@ -292,9 +290,12 @@ aho_trie *read_patterns () {
 		}
 	}
 
-
-	prepare_aho_automata (root);
-	return root;
+	if (_decompress) 
+		return 0;
+	else {
+		prepare_aho_automata (root);
+		return root;
+	}
 }
 
 aho_trie *read_patterns_from_file (const char *path) {

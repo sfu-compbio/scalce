@@ -33,6 +33,7 @@ int		 _compression_mode         = IO_GZIP;
 char      _interleave               = 0;
 int       _time_elapsed 				= 0;
 int       _thread_count 				= 1;
+int       _decompress = 0;
 
 extern char _binary_HELP_start;
 extern char _binary_HELP_end;
@@ -55,8 +56,6 @@ void check_arguments (char **files, int length, int mode) {
 		ERROR ("Percentage must be in range [0,100].\n");
 	if (!strcmp (_output_path, "-") && !(_interleave && mode))
 		ERROR ("stdout can be only used with interleaved files in decompression mode.\n");
-	if (_thread_count > 1 && _compression_mode == IO_GZIP)
-		_compression_mode = IO_PGZIP;
 
 	struct stat s;
 	if (!mode) {
@@ -82,13 +81,14 @@ void check_arguments (char **files, int length, int mode) {
 
 int main (int argc, char **argv) {
 	setlocale(LC_ALL,"");
-	_time_elapsed = 0;
 	_time_elapsed = TIME;
 
 	// set default number of threads
 	_thread_count = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
 
 	LOG("SCALCE %s [OpenMP; available cores=%d]\n", SCALCE_VERSION, _thread_count+1);
+	if (_thread_count > 1)
+		_compression_mode = IO_PGZIP;
 
 	int mode = 0, opt; // default -  compress
 	struct option long_opt[] = {
@@ -191,7 +191,8 @@ int main (int argc, char **argv) {
 		}
 	} while (opt != -1);
 	check_arguments (argv + optind, argc - optind, mode);
-	if (mode == 1) { 
+	if (mode == 1) {
+		_decompress=1;
 		decompress(argv[argc-1],_output_path);
 	}
 	else {

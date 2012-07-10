@@ -225,12 +225,12 @@ void *thread_d (void *tv) {
 /****************************/
 
 void ac_init () {
-	threads = (pthread_t*)malloc(sizeof(pthread_t) * _thread_count);
-	input = (uint8_t*)malloc(buffer_size * _thread_count);
-	output = (uint8_t*)malloc(buffer_size * _thread_count);
-	output_size = (uint32_t*)malloc(sizeof(uint32_t) * _thread_count);
-	input_size = (uint32_t*)malloc(sizeof(uint32_t) * _thread_count);
-	thread_index = (int*)malloc(_thread_count * sizeof(int));
+	threads = (pthread_t*)mallox(sizeof(pthread_t) * _thread_count);
+	input = (uint8_t*)mallox(buffer_size * _thread_count);
+	output = (uint8_t*)mallox(buffer_size * _thread_count);
+	output_size = (uint32_t*)mallox(sizeof(uint32_t) * _thread_count);
+	input_size = (uint32_t*)mallox(sizeof(uint32_t) * _thread_count);
+	thread_index = (int*)mallox(_thread_count * sizeof(int));
 	for (int i = 0; i < _thread_count; i++)
 		thread_index[i] = i;
 }

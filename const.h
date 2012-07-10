@@ -61,6 +61,7 @@ extern int       _split_reads;
 extern int       _compression_mode;
 extern int       _thread_count;
 extern char      _interleave;
+extern int       _decompress;
 
 extern int32_t read_length[2];                 /* length of read in one fastq file */
 extern int64_t reads_count;                /* total read count in all input files */

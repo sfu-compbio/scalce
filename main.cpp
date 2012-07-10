@@ -92,6 +92,8 @@ int main (int argc, char **argv) {
 	LOG("SCALCE %s [OpenMP; available cores=%d]\n", SCALCE_VERSION, _thread_count+1);
 	if (_thread_count > 1)
 		_compression_mode = IO_PGZIP;
+	else
+		_compression_mode = IO_GZIP;
 
 	int mode = 0, opt; // default -  compress
 	struct option long_opt[] = {

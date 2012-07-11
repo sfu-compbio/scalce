@@ -31,7 +31,7 @@ char      _pattern_path[MAXLINE];
 int       _split_reads              = 0;
 int		 _compression_mode         = IO_GZIP;
 char      _interleave               = 0;
-int       _time_elapsed 				= 0;
+int64_t       _time_elapsed 				= 0;
 int       _thread_count 				= 1;
 int       _decompress = 0;
 
@@ -162,6 +162,8 @@ int main (int argc, char **argv) {
 				break;
 			case 'T':
 				_thread_count = atoi (optarg);
+				if(_thread_count == 1 && _compression_mode == IO_PGZIP)
+_compression_mode = IO_GZIP;
 				break;
 			case 'S':
 				_split_reads = atoi (optarg);

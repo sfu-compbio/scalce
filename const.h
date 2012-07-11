@@ -12,7 +12,7 @@
 
 void MEM(char *A);
 
-int _TIME_();
+int64_t _TIME_();
 
 #define GLOBALBUFSZ  5*MAXLINE
 #define MIN(x,y)  (((x)<(y))?(x):(y))
@@ -56,7 +56,7 @@ extern uint64_t  _max_bucket_set_size;
 extern char      _temp_directory[MAXLINE];
 extern char      _library_name[MAXLINE];
 extern char      _pattern_path[MAXLINE];  
-extern int       _time_elapsed;
+extern int64_t       _time_elapsed;
 extern int       _split_reads;
 extern int       _compression_mode;
 extern int       _thread_count;

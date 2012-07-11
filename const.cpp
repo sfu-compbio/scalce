@@ -21,11 +21,11 @@ char *get_second_file (const char *c) {
 
 	return buf;
 }
-int _TIME_()
+int64_t _TIME_()
 {
 	struct timeval t;
 	gettimeofday(&t,0);
-	return (t.tv_sec*1000000+t.tv_usec);
+	return (t.tv_sec*1000000ll+t.tv_usec);
 }
 
 

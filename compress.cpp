@@ -464,23 +464,18 @@ void *thread (void *vt) {
 void compress (char **files, int nf, const char *output, const char *pattern_path) {
 	char line[MAXLINE], read[2][MAXLINE];
 
-	int start_time = TIME;
 
 	LOG("Buffer size: %lldK, bucket storage size: %lldK\n", _file_buffer_size/1024, _max_bucket_set_size/1024);
 
 
-	int Ts;
-
 	/* initialize the trie */
 	DLOG ("Reading core strings ... ");
-	Ts = TIME;
 	trie = pattern_path[0] ? read_patterns_from_file(pattern_path) : read_patterns ();
-	DLOG ("OK %d sec\n", TIME-Ts);
+	DLOG ("OK\n");
 
 
 	/* initialize basic variables */
 	LOG ("Preprocessing FASTQ files ...\n");
-	Ts = TIME;
 	int64_t original_size = 0;   /* size of input files, combined */
 
 	char use_only_second_file = _use_second_file;        /* we need original _use... variable for simplification */
@@ -502,7 +497,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 	/* obtain quality tables and stats */
 	get_quality_stats (input, files[0], qmap);
-	LOG("OK, %d sec\n", TIME-Ts);
+	LOG("OK\n");
 
 	LOG("Using %d threads...\n", _thread_count);
 
@@ -548,7 +543,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	merge(temp_file_count);
 
 	/* compress and output */
-	int scalce_preprocessing_time = TIME;
+	int64_t scalce_preprocessing_time = TIME;
 	int64_t new_size = combine_and_compress_with_split (temp_file_count, output, (_split_reads ? _split_reads : reads_count), qmap[0].offset);
 
 	/* cleaning again */
@@ -569,9 +564,9 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	LOG("\tUnbucketed reads count: %d, bucketed percentage %.2lf\n", unbuck(), 100.0 * ((double)(reads_count - unbuck()) / reads_count));
 	LOG("\tLossy percentage: %d\n", _quality_lossy_percentage);
 	_time_elapsed = (TIME-_time_elapsed)/1000000;
-	LOG("\tTime elapsed:     %02d:%02d:%02d\n", _time_elapsed/3600, (_time_elapsed/60)%60, _time_elapsed%60);
-	int compress_time = (TIME - scalce_preprocessing_time) / 1000000;
-	LOG("\tCompression time: %02d:%02d:%02d\n", compress_time/3600, (compress_time/60)%60, compress_time%60);
+	LOG("\tTime elapsed:     %02lld:%02lld:%02lld\n", _time_elapsed/3600, (_time_elapsed/60)%60, _time_elapsed%60);
+	int64_t compress_time = (TIME - scalce_preprocessing_time) / 1000000;
+	LOG("\tCompression time: %02lld:%02lld:%02lld\n", compress_time/3600, (compress_time/60)%60, compress_time%60);
 	LOG("\tOriginal size: %.2lfM, new size: %.2lfM, compression factor: %.2lf\n", original_size/(1024.0*1024.4), new_size/(1024.0*1024.0), (original_size/(double)new_size));
 	
 }

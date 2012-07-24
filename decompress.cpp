@@ -247,6 +247,7 @@ void decompress (const char *path, const char *out) {
 	}
 	if(_use_second_file)
 		f_free(fo+1);
+	LOG("hai");
 	ac_finish();
 	_time_elapsed = (TIME-_time_elapsed)/1000000;
 	LOG("\tTime elapsed:     %02d:%02d:%02d\n", _time_elapsed/3600, (_time_elapsed/60)%60, _time_elapsed%60);

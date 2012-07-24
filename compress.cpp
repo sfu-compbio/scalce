@@ -436,6 +436,7 @@ void *thread (void *vt) {
 			rd.sz += output_read(read, rd.data + rd.sz, 0, 0);
 			rd.end = 0;
 		}
+		pthread_spin_lock(&w_spin);
 		rd.sz += output_quality(qual, read, qmap + 0, rd.data + rd.sz, 0);
 		rd.of = rd.sz;
 		if (_use_second_file || _interleave) {
@@ -443,7 +444,6 @@ void *thread (void *vt) {
 			rd.sz += output_quality(qual2, read2, qmap + 1, rd.data + rd.sz, 1);
 		}
 
-		pthread_spin_lock(&w_spin);
 		bin_node *bn = aho_trie_bucket (bucket, &rd);
 		total_size += rd.sz + sizeof(bin_node);
 		file_reads++;
@@ -452,8 +452,10 @@ void *thread (void *vt) {
 
 		if (total_size >= _max_bucket_set_size) {
 			pthread_spin_lock(&w_spin);
-			dump_trie(temp_file_count++, trie);
-			total_size = 0;
+			if (total_size >= _max_bucket_set_size) {
+				dump_trie(temp_file_count++, trie);
+				total_size = 0;
+			}
 			pthread_spin_unlock(&w_spin);
 		}
 	}

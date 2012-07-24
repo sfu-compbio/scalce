@@ -144,7 +144,9 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	              *fR = file_pool + 1,
 	              *fQ = file_pool + 2,
 	              *fM = file_pool + 3;
-	ac_init();	
+
+	if (!_no_ac) 
+		ac_init();	
 	/*
 	 * Structure:
 	 * - Read size 		int32
@@ -162,7 +164,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 
 	buffered_file foQ, foR, foN;
 
-	f_init (&foQ, IO_SYS);
+	f_init (&foQ, _no_ac ? _compression_mode : IO_SYS);
 	f_init (&foR, _compression_mode);
 	f_init (&foN, _compression_mode);
 	LOG ("compression: %s\n", 
@@ -178,7 +180,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	);
 
 	int64_t new_size = 0;
-	uint8_t magic[] = { 's','c','a','l', 'c','e','2','1' };
+	uint8_t magic[] = { 's','c','a','l', 'c','e','2','2' };
 
 	int sz_meta = 1;
 	if (read_length[0] > 255) sz_meta = 2;
@@ -196,31 +198,37 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		f_open (&foR, buffer, IO_WRITE);
 
 		f_write (&foR, magic, 8);
+		f_write (&foR, &_no_ac, sizeof(int));
 		f_write (&foR, read_length + NP, sizeof(int32_t));
 
 		f_write (&foQ, magic, 8);
 		f_write (&foQ, &phred_offset, sizeof(int64_t));
 		
-		uint64_t _lmt_ = (1LL << 32) - 1;
-		int factor = 1;
-		factor += (reads_count * read_length[NP]) / _lmt_;
-		LOG("shrink factor for %d: %d\n", NP, factor);
+		if (!_no_ac) {
+			uint64_t _lmt_ = (1LL << 32) - 1;
+			int factor = 1;
+			factor += (reads_count * read_length[NP]) / _lmt_;
+			LOG("shrink factor for %d: %d\n", NP, factor);
 
-		for (int i = 0; i < AC_DEPTH; i++) // write stat stuff
-			for (int j = 0; j < AC_DEPTH; j++) 
-				for (int k = 0; k < AC_DEPTH; k++) {
+			for (int i = 0; i < AC_DEPTH; i++) // write stat stuff
+				for (int j = 0; j < AC_DEPTH; j++) 
+					for (int k = 0; k < AC_DEPTH; k++) {
 
-					uint64_t *p = &ac_freq4[NP][(i*AC_DEPTH+j)*AC_DEPTH+k];
-					*p = *p / factor;
-					if (*p == 0) *p = 1;
+						uint64_t *p = &ac_freq4[NP][(i*AC_DEPTH+j)*AC_DEPTH+k];
+						*p = *p / factor;
+						if (*p == 0) *p = 1;
 
-					uint32_t x = *p;
-					f_write(&foQ, &x, sizeof(uint32_t));	
+						assert((*p)>0);
+						assert((*p)<((1LL<<32)-1));
 
-				}
-		set_ac_stat(ac_freq3[NP], ac_freq4[NP]);
-		uint64_t qualtotalsize = reads_count * read_length[NP];
-		f_write(&foQ,&qualtotalsize,sizeof(uint64_t));
+						uint32_t x = *p;
+						f_write(&foQ, &x, sizeof(uint32_t));
+					}
+			set_ac_stat(ac_freq3[NP], ac_freq4[NP]);
+		
+			uint64_t qualtotalsize = reads_count * read_length[NP];
+			f_write(&foQ,&qualtotalsize,sizeof(uint64_t));
+		}
 
 		f_write (&foN, magic, 8);
 		f_write (&foN, &_use_names, 1);
@@ -263,7 +271,10 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 			}
 			for (int64_t i = 0; i < lQ; i += GLOBALBUFSZ) {
 				int64_t r = f_read (fQ, global_buffer, MIN (lQ - i, GLOBALBUFSZ));
-				ac_write (&foQ, (uint8_t*)global_buffer, r);
+				if (!_no_ac) 
+					ac_write (&foQ, (uint8_t*)global_buffer, r);
+				else
+					f_write (&foQ, (uint8_t*)global_buffer, r);
 			}
 			if (_use_names) {
 				for (int64_t i = 0; i < lN; i += GLOBALBUFSZ) {
@@ -277,7 +288,8 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		}
 		printf("Written %d cores\n", __nC__);
 
-		ac_write(&foQ, 0, 0);
+		if (!_no_ac) 
+			ac_write(&foQ, 0, 0);
 		f_close (&foR);
 		f_close (&foN);
 		f_close (&foQ);
@@ -309,7 +321,8 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		f_close (file_pool + i);
 		unlink (buffer);
 	}
-	ac_finish();
+	if (!_no_ac) 
+		ac_finish();
 
 	DLOG("\tDone!\n");
 	return new_size;
@@ -452,8 +465,10 @@ void *thread (void *vt) {
 
 		if (total_size >= _max_bucket_set_size) {
 			pthread_spin_lock(&w_spin);
-			dump_trie(temp_file_count++, trie);
-			total_size = 0;
+			if (total_size >= _max_bucket_set_size) {
+				dump_trie(temp_file_count++, trie);
+				total_size = 0;
+			}
 			pthread_spin_unlock(&w_spin);
 		}
 	}
@@ -540,7 +555,10 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 	/* merge */
 	LOG("Merging results ... %d\n", temp_file_count);
-	merge(temp_file_count);
+	if (temp_file_count == 1)
+		temp_file_count = 0;
+	else
+		merge(temp_file_count);
 
 	/* compress and output */
 	int64_t scalce_preprocessing_time = TIME;

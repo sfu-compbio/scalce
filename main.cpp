@@ -34,6 +34,7 @@ char      _interleave               = 0;
 int64_t       _time_elapsed 				= 0;
 int       _thread_count 				= 1;
 int       _decompress = 0;
+int       _no_ac = 0;
 
 extern char _binary_HELP_start;
 extern char _binary_HELP_end;
@@ -113,16 +114,20 @@ int main (int argc, char **argv) {
 		{ "split-reads",       1, NULL, 'S' },
 		{ "threads",           1, NULL, 'T' },
 		{ "version",		     0, NULL, 'v' },
+		{ "no-arithmetic",     0, NULL, 'a' },
 		{ NULL,                0, NULL,  0  }
 	};
 	do {
-		opt = getopt_long (argc, argv, "vhp:b:T:dc:o:s:P:t:B:rn:S:"/*"i"*/, long_opt, NULL);
+		opt = getopt_long (argc, argv, "vhp:b:T:dc:o:s:P:t:B:ran:S:"/*"i"*/, long_opt, NULL);
 		switch (opt) {
 			case 'v':
 			//	LOG("%s\n",SCALCE_VERSION);
 				exit(0);
 			case 'h':
 				help ();
+				break;
+			case 'a':
+				_no_ac = 1;
 				break;
 		//	case 'i':
 		//		_interleave = 1;

@@ -20,7 +20,7 @@ void get_file_name (char *name, char c) {
 }
 
 void decompress (const char *path, const char *out) {
-	uint8_t buffer[MAXLINE];
+	uint8_t buffer[MAXLINE], buffer2[MAXLINE];
 
 	aho_trie *trie = _pattern_path[0] ? read_patterns_from_file(_pattern_path) : read_patterns ();
 
@@ -52,7 +52,6 @@ void decompress (const char *path, const char *out) {
 
 		/* initialization */
 		f_init (fR + i, mode);
-		f_init (fQ + i, IO_SYS);
 		f_init (fN + i, mode);
 
 		/* open read, name and quality file */
@@ -60,29 +59,41 @@ void decompress (const char *path, const char *out) {
 		f_open (fR + i, (char*)buffer, IO_READ);
 		if (!f_alive (fR + i)) 
 			ERROR("Cannot find read file %s!\n", buffer);
-		get_file_name ((char*)buffer, 'q');
-		f_open (fQ + i, (char*)buffer, IO_READ);
-		if (!f_alive (fQ + i)) 
-			ERROR("Cannot find quality file %s!\n", buffer);
-		get_file_name ((char*)buffer, 'n');
+				get_file_name ((char*)buffer, 'n');
 		f_open (fN + i, (char*)buffer, IO_READ);
 		if (!f_alive (fN + i) && _use_names) 
 			ERROR("Cannot find name file %s! Use -n parameter if you want to skip name file lookup.\n", buffer);
 
 		/* read magic */
-		f_read (fR+i, buffer, 8);
+		f_read (fR+i, buffer2, 8);
+
+		buffer2[8] = 0;
+		LOG("File magic: %s\n", buffer2 + 6);
+		_no_ac = 0;
+		if (buffer2[6] == '2' && buffer2[7] >= '2')
+			f_read (fR+i, &_no_ac, sizeof(int));
+
+		f_init(fQ+i, _no_ac?mode:IO_SYS);
+		get_file_name ((char*)buffer, 'q');
+		f_open (fQ + i, (char*)buffer, IO_READ);
+		if (!f_alive (fQ + i)) 
+			ERROR("Cannot find quality file %s!\n", buffer);
+
 		f_read (fQ+i, buffer, 8);
 		f_read (fN+i, buffer, 8);
 		/* read metadata */
 		f_read (fR+i, len+i, sizeof(int32_t));
 		f_read (fQ+i, phredOff+i, sizeof(int64_t));
-		for (int x = 0; x < AC_DEPTH; x++) // write stat stuff
-			for (int j = 0; j < AC_DEPTH; j++) 
-				for (int k = 0; k < AC_DEPTH; k++) { 
-					uint32_t y;
-					f_read(fQ+i, &y, sizeof(uint32_t));
-					ac_freq4[i][(x*AC_DEPTH + j)*AC_DEPTH+k] = y;	
-				}
+
+		if (!_no_ac) {
+			for (int x = 0; x < AC_DEPTH; x++) // write stat stuff
+				for (int j = 0; j < AC_DEPTH; j++) 
+					for (int k = 0; k < AC_DEPTH; k++) { 
+						uint32_t y;
+						f_read(fQ+i, &y, sizeof(uint32_t));
+						ac_freq4[i][(x*AC_DEPTH + j)*AC_DEPTH+k] = y;	
+					}
+		}
 
 		if (!i) strncpy ((char*)buffer, get_second_file (path), MAXLINE);
 	}
@@ -146,8 +157,10 @@ void decompress (const char *path, const char *out) {
 		uint32_t n_id = 0, n_lane = 0, n_i, n_l, n_x, n_y;
 		nameidx = 0;
 		/* init qq */
-		set_ac_stat(ac_freq3[F], ac_freq4[F]);
-		ac_read(fQ+F, 0, 0);
+		if(!_no_ac) {
+			set_ac_stat(ac_freq3[F], ac_freq4[F]);
+			ac_read(fQ+F, 0, 0);
+		}
 
 		for (int64_t K = 0; ; K++) {
 			/* names */
@@ -188,7 +201,10 @@ void decompress (const char *path, const char *out) {
 
 
 			/* quals */
-			ac_read(fQ + F, buffer, bc[F]);
+			if (!_no_ac)
+				ac_read(fQ + F, buffer, bc[F]);
+			else
+				f_read(fQ + F, buffer, bc[F]);
 			int qc = 0;
 			for (int i = 0; i < bc[F]; i ++) buffer[i]+=phredOff[F]; 
 			buffer[qc = bc[F]] = '\n';
@@ -247,7 +263,8 @@ void decompress (const char *path, const char *out) {
 	}
 	if(_use_second_file)
 		f_free(fo+1);
-	ac_finish();
+	if(!_no_ac)
+		ac_finish();
 	_time_elapsed = (TIME-_time_elapsed)/1000000;
 	LOG("\tTime elapsed:     %02d:%02d:%02d\n", _time_elapsed/3600, (_time_elapsed/60)%60, _time_elapsed%60);
 }

@@ -19,7 +19,8 @@ int main (int argc, char **argv) {
 	int frc=0;
 	char buff[500];
 	while (fgets(buff, 500, fr)) {
-		string name = buff;
+		int c=0;while(buff[c]!=' '&&buff[c]!='\n')c++;buff[c]=0;
+		string name=buff;
 		fq_rec f;
 		fgets(buff, 500, fr); f.read = buff;
 		fgets(buff, 500, fr);
@@ -31,6 +32,7 @@ int main (int argc, char **argv) {
 
 	int fqc=0;
 	while (fgets(buff, 500, fq)) {
+		int c=0;while(buff[c]!=' '&&buff[c]!='\n')c++;buff[c]=0;
 		string name = buff;
 		fq_rec f;
 		fgets(buff, 500, fq); f.read = buff;

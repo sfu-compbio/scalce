@@ -127,19 +127,22 @@ int output_quality (char* line, char *read, quality_mapping *q, uint8_t *dest, i
 	int bc = 0, l = 0;
 	while (line[l] != '\n') {
 		dest[bc] = (read[l] == 'N' ? q->offset : q->values[line[l]]) - q->offset;
-		if (prev[ZZ][1] < 256) {
-			ac_freq3[ZZ][prev[ZZ][1]*AC_DEPTH + dest[bc]]++;
-			if (prev[ZZ][0] < 256) 
-				ac_freq4[ZZ][(prev[ZZ][0]*AC_DEPTH + prev[ZZ][1])*AC_DEPTH+dest[bc]]++;
+		
+		if (!_no_ac) {
+			if (prev[ZZ][1] < 256) {
+				ac_freq3[ZZ][prev[ZZ][1]*AC_DEPTH + dest[bc]]++;
+				if (prev[ZZ][0] < 256) 
+					ac_freq4[ZZ][(prev[ZZ][0]*AC_DEPTH + prev[ZZ][1])*AC_DEPTH+dest[bc]]++;
+			}
+			else { 
+				for (int e = 0; e < AC_DEPTH; e++)
+					for (int j = 0; j < AC_DEPTH; j++)
+						for (int l = 0; l < AC_DEPTH; l++)
+							ac_freq4[ZZ][(e*AC_DEPTH + j)*AC_DEPTH+l] = 1;
+			}
+			prev[ZZ][0] = prev[ZZ][1];
+			prev[ZZ][1] = dest[bc];
 		}
-		else { 
-			for (int e = 0; e < AC_DEPTH; e++)
-				for (int j = 0; j < AC_DEPTH; j++)
-					for (int l = 0; l < AC_DEPTH; l++)
-						ac_freq4[ZZ][(e*AC_DEPTH + j)*AC_DEPTH+l] = 1;
-		}
-		prev[ZZ][0] = prev[ZZ][1];
-		prev[ZZ][1] = dest[bc];
 		bc++;
 		l++;
 	}

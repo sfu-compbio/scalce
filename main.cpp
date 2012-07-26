@@ -90,7 +90,7 @@ int main (int argc, char **argv) {
 	// set default number of threads
 	_thread_count = sysconf( _SC_NPROCESSORS_ONLN ) - 1;
 
-	LOG("SCALCE %s [OpenMP; available cores=%d]\n", SCALCE_VERSION, _thread_count+1);
+	LOG("SCALCE %s [pthreads; available cores=%d]\n", SCALCE_VERSION, _thread_count+1);
 	if (_thread_count > 1)
 		_compression_mode = IO_PGZIP;
 	else

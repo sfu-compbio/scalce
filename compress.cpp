@@ -531,18 +531,20 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 			original_size += s.st_size;
 		}
 
+		file_reads = 0;
 		for (int ti = 0; ti < _thread_count; ti++)
 			pthread_create(&threads[ti], 0, thread, (void*)&thread_index[ti]);
 		for (int ti = 0; ti < _thread_count; ti++)
 			pthread_join (threads[ti], 0);
-
 		reads_count += file_reads;
 
 		for (int fi = 0; fi < use_only_second_file + 1; fi++)
 			f_close (input + fi);
 		LOG("\tDone with file %s, %lld reads found\n", files[F], file_reads);
 		if (use_only_second_file)
-			LOG("\t          file %s, %lld reads found\n", get_second_file (files[F]), file_reads); 
+			LOG("\t          file %s, %lld reads found\n", get_second_file (files[F]), file_reads);
+
+		file_reads = 0;
 	}
 
 	/* clean all stuff */

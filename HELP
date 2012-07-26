@@ -1,31 +1,27 @@
 NAME
-	SCALCE - tool for compressing FASTQ files.
+	SCALCE - tool for compressing Illumina-generated FASTQ files.
 
 SYNOPSIS
 	scalce [OPTION]... -o [OUTPUT] [FILES]...
 
 DESCRIPTION
+	SCALCE is a FASTQ compression tool designed specifically for the 
+	Illumina-generated FASTQ files.
+
 	SCALCE will compress provided FASTQ files and generate three output files
 	with extension .scalcen (for read names), .scalcer (reads) and .scalceq
 	(qualities). The read length should be fixed in any of the mates in one run.
-	This means, if you are passing 3 paired libraries, then the read lengths
-	mate1 should be fixed (i.e. 50bp). The read lengths for the second mate could
-	be different that the first mate.
+	This means, if you are passing 3 paired-end libraries, then the read lengths
+	in the first mate should be fixed (i.e. 50bp). The read lengths for the 
+	second mate could	be different that those of the first mate.
 	
 	Mandatory parameters:
 	
 	-o, --output
 		Specifies the prefix for the output file names. Extensions and basic 
 		information will be appended.
-		Standard output is supported only when decompressing interleaved file, 
-		and it is specified by a dash (i.e scalce -o -).
 	
 	Shared arguments (both for compression and decompression):
-
-	-b, --file-buffer-size [size][MG]
-		Set internal file buffer size (M)egabytes or (G)igabytes. This size is
-		used for internal I/O buffering.
-		Default: 128M
 
 	-r, --paired-end
 		Use paired-end FASTQ files when the two ends are in separate files. The
@@ -66,6 +62,12 @@ DESCRIPTION
 			pigz - parallelized gzip
 			bz   - bzip2 compression
 		Default: gz if thread count is 1; otherwise pigz
+
+	-A, --no-arithmetic
+		Disable arithmetic coding for the quality compression and use default 
+		compression mode. This helps reduce both compression and decompression time, 
+		but the compression ratio may suffer. 
+		Default: not activated
 	
 	-p, --lossy-percentage [percentage]
 		Set lossy error percentage.
@@ -81,10 +83,11 @@ DESCRIPTION
 		Default: __temp__
 
 	-T, --threads [count]
-		Specifies the number of worker threads. If none specified, number of available processors
+		Specifies the number of worker threads. If none specified, SCALCE will use 4
+		worker threads, or less if the number of available processors is less than 4.
 		will be used.
 		
-AUTHOR
+AUTHORS
 	Faraz Hach
 	Ibrahim Numanagic
 	Can Alkan
@@ -93,8 +96,32 @@ AUTHOR
 REPORTING BUGS
 	Please report bugs through the SCALCE web page at http://scalce.sourceforge.net
 
-COPYRIGHT
-	2011-
-	Simon Fraser University, BC, V5A 1S6 Canada
-	University of Washington, Seattle, WA, 98195-5065
+LICENCE
+	Copyright (c) 2011 - 2012, Simon Fraser University
+	All rights reserved.
+
+	Redistribution and use in source and binary forms, with or without modification, 
+	are permitted provided that the following conditions are met:
+
+	Redistributions of source code must retain the above copyright notice, this list
+	of conditions and the following disclaimer.
+	- 	Redistributions in binary form must reproduce the above copyright notice, this
+		list of conditions and the following disclaimer in the documentation and/or other
+		materials provided with the distribution.
+	- 	Neither the name of the Simon Fraser University nor the names of its contributors may be
+		used to endorse or promote products derived from this software without specific
+		prior written permission.
+
+	THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+	"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+	LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+	A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR
+	CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+	EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+	PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
+	PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+	LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+	NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+	SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 

@@ -33,6 +33,7 @@
  * Last Update    : 25. vii 2012.
  */
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -218,19 +219,19 @@ void decompress (const char *path, const char *out) {
 
 				if((_interleave|_use_second_file) && chr > 0 && buffer[chr - 1] == '/')
 					buffer[chr] = F + 1 + '0';
-
-				f_write(pfo[F],buffer, chr+1);
+				buffer[chr+1] = '\n';
+				f_write(pfo[F],buffer, chr+2);
 			}
 			else {
-				snprintf((char*)buffer, MAXLINE, "@%s.%lld", library, nameidx);
+				snprintf((char*)buffer, MAXLINE, "@%s.%lld\n", library, nameidx);
 				f_write(pfo[F],buffer,strlen((char*)buffer));
 			}
-			if(_interleave && (!names ||  (chr > 0 && buffer[chr] != F + 1 - '0' && buffer[chr - 1] != '/'))) {
-				snprintf((char*)buffer,3,"/%d",F+1);
-				f_write(pfo[F],buffer, 2);
-			}
-			chr='\n';
-			f_write(pfo[F],&chr,1);
+//			if(_interleave && (!names ||  (chr > 0 && buffer[chr] != F + 1 - '0' && buffer[chr - 1] != '/'))) {
+//				snprintf((char*)buffer,3,"/%d",F+1);
+//				f_write(pfo[F],buffer, 2);
+//			}
+//			chr='\n';
+//			f_write(pfo[F],&chr,1);
 
 
 			/* quals */
@@ -238,45 +239,36 @@ void decompress (const char *path, const char *out) {
 				ac_read(fQ + F, buffer, bc[F]);
 			else
 				f_read(fQ + F, buffer, bc[F]);
-			int qc = 0;
-			for (int i = 0; i < bc[F]; i ++) buffer[i]+=phredOff[F]; 
-			buffer[qc = bc[F]] = '\n';
-		
+			
 			/* reads */
+			int64_t end = 0;
+			int r = f_read (fR+F, o, SZ_READ(len[F]-corlen));
+			int lc = 0;
 			if (!F) {
-				int r = f_read (fR+F, o, SZ_READ(len[F]-corlen));
-				int16_t end; 
 				f_read(fR+F, &end, sz_meta);
-				if (end) end -= corlen;
-				//	LOG("[%d,%d,%d]\n",corlen,len[F],end);
-				for(int i=0; i<len[F]-corlen; i++)
-					ox[i] = alphabet[ (o[i/4] >> ((3 - i%4) * 2)) & 3 ];
-
-				int le=0;
+				assert (end != 0 || corlen == 0);
 				if (end) {
-					memcpy(l, ox+(len[F]-end-corlen), end); le+=end;
+					for (int i = len[F] - end; i < len[F] - corlen; i++) 
+						l[lc++] = alphabet[ o[i >> 2] >> ((~i & 3) << 1) & 3 ];
+					for (int i = 0; i < corlen; i++) 
+						l[lc++] = patterns[core][i];
 				}
-				if (corlen) {
-					memcpy(l+le, patterns[core], corlen); le+= corlen;
-				}
-				memcpy(l+le, ox, len[F]-end-corlen);
 			}
-			else {
-				f_read(fR+F,o,SZ_READ(len[F]));
-				for(int i=0; i<len[F]; i++)
-					l[i] = alphabet[ (o[i/4] >> ((3 - i%4) * 2)) & 3 ];
-			}
+			for (int i = 0; i < len[F] - end; i++) 
+				l[lc++] = alphabet[ o[i >> 2] >> ((~i & 3) << 1) & 3 ];
+
 			for(int i = 0; i < len[F]; i++) {
-				chr = (buffer[i] == phredOff[F]
-						? 'N'
-						: l[i] ); // alphabet[ (l[i/4] >> ((3 - i%4) * 2)) & 3 ]);
-				//				if (buffer[i] == '!') buffer[i] = phredOff[F];
-				f_write (pfo[F], &chr, 1);
+				if (!buffer[i]) l[i] = 'N';
+				buffer[i] += phredOff[F];
 			}
-			chr = '\n'; f_write (pfo[F],&chr, 1);
-			chr = '+'; f_write (pfo[F],&chr, 1);
-			chr = '\n'; f_write (pfo[F],&chr, 1);
-			f_write (pfo[F], buffer, qc+1);
+
+			l[len[F]] = '\n';
+			l[len[F]+1] = '+';
+			l[len[F]+2] = '\n';
+			f_write(pfo[F],l,len[F]+3);
+			buffer[len[F]] = '\n';
+			f_write(pfo[F],buffer,len[F]+1);
+
 			nameidx++;
 		}
 	}

@@ -1,8 +1,8 @@
 # 786
 
 CC=g++
-CFLAGS= -c -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DSCALCE_VERSION=\"2.2\" -O2
-LDFLAGS=  -lm  bzip2-1.0.6/libbz2.a zlib-1.2.5/libz.a -lpthread -O2 #-lprofile-ltcmalloc
+CFLAGS= -c -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DSCALCE_VERSION=\"2.3\" -O3 -DNDEBUG
+LDFLAGS=  -lm  bzip2-1.0.6/libbz2.a zlib-1.2.5/libz.a -lpthread -O3 #-lprofile-ltcmalloc
 SOURCES=const.cpp buffio.cpp arithmetic.cpp main.cpp names.cpp qualities.cpp reads.cpp compress.cpp decompress.cpp
 OBJECTS=HELP.o patterns.o $(SOURCES:.cpp=.o)
 EXECUTABLE=scalce

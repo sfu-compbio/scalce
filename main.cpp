@@ -50,7 +50,7 @@
 #include "compress.h"
 #include "decompress.h"
 
-#define MIN(a,b) ((a)<(b)?(a):(b))
+//#define MIN(a,b) ((a)<(b)?(a):(b))
 
 // Argument globals
 int       _quality_sample_lines     = 100000;
@@ -149,11 +149,11 @@ int main (int argc, char **argv) {
 	//	{ "split-reads",       1, NULL, 'S' },
 		{ "threads",           1, NULL, 'T' },
 		{ "version",		     0, NULL, 'v' },
-		{ "no-arithmetic",     0, NULL, 'a' },
+		{ "no-arithmetic",     0, NULL, 'A' },
 		{ NULL,                0, NULL,  0  }
 	};
 	do {
-		opt = getopt_long (argc, argv, "vhp:T:dc:o:s:t:B:ran:"/*"i"*/, long_opt, NULL);
+		opt = getopt_long (argc, argv, "vhp:T:dc:o:s:t:B:rAn:"/*"i"*/, long_opt, NULL);
 		switch (opt) {
 			case 'v':
 			//	LOG("%s\n",SCALCE_VERSION);

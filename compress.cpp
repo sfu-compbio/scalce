@@ -178,7 +178,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	              *fQ = file_pool + 2,
 	              *fM = file_pool + 3;
 
-	if (!_no_ac) 
+	if (_compress_qualities && !_no_ac) 
 		ac_init();	
 	/*
 	 * Structure:
@@ -237,7 +237,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		f_write (&foQ, magic, 8);
 		f_write (&foQ, &phred_offset, sizeof(int64_t));
 		
-		if (!_no_ac) {
+		if (_compress_qualities && !_no_ac) {
 			uint64_t _lmt_ = (1LL << 32) - 1;
 			int factor = 1;
 			factor += (reads_count * read_length[NP]) / _lmt_;
@@ -302,6 +302,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 				int64_t r = f_read (fR, global_buffer, MIN (lR - i, GLOBALBUFSZ));
 				f_write (&foR, global_buffer, r);
 			}
+			if (_compress_qualities)
 			for (int64_t i = 0; i < lQ; i += GLOBALBUFSZ) {
 				int64_t r = f_read (fQ, global_buffer, MIN (lQ - i, GLOBALBUFSZ));
 				if (!_no_ac) 
@@ -473,6 +474,7 @@ void *thread (void *vt) {
 		pthread_spin_unlock(&r_spin);
 
 		int n = aho_search(read, trie, &bucket);
+		
 		rd.sz = output_name(name, rd.data);
 		if (n != -1) {
 			rd.sz += output_read(read, rd.data + rd.sz, n - bucket->level + 1, bucket->level);
@@ -482,18 +484,22 @@ void *thread (void *vt) {
 			rd.sz += output_read(read, rd.data + rd.sz, 0, 0);
 			rd.end = 0;
 		}
+		
 		pthread_spin_lock(&w_spin);
-		rd.sz += output_quality(qual, read, qmap + 0, rd.data + rd.sz, 0);
+		if (_compress_qualities)
+			rd.sz += output_quality(qual, read, qmap + 0, rd.data + rd.sz, 0);
 		rd.of = rd.sz;
 		if (_use_second_file || _interleave) {
 			rd.sz += output_read(read2, rd.data + rd.sz, 0, 0);
-			rd.sz += output_quality(qual2, read2, qmap + 1, rd.data + rd.sz, 1);
+			if (_compress_qualities)
+				rd.sz += output_quality(qual2, read2, qmap + 1, rd.data + rd.sz, 1);
 		}
 
 		bin_node *bn = aho_trie_bucket (bucket, &rd);
 		total_size += rd.sz + sizeof(bin_node);
 		file_reads++;
 		pthread_spin_unlock(&w_spin);
+
 		memcpy (bn->data.data, rd.data, rd.sz);
 
 		if (total_size >= _max_bucket_set_size) {

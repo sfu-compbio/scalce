@@ -70,6 +70,7 @@ int64_t       _time_elapsed 				= 0;
 int       _thread_count 				= 1;
 int       _decompress = 0;
 int       _no_ac = 0;
+int       _compress_qualities = 1;
 
 extern char _binary_HELP_start;
 extern char _binary_HELP_end;
@@ -79,9 +80,38 @@ void help () {
 	exit(0);
 }
 
+// based on http://stackoverflow.com/questions/12765010/c-test-for-file-existence-before-calling-execvp
+int is_file(const char* path) {
+	struct stat buf;
+	stat(path, &buf);
+	return S_ISREG(buf.st_mode);
+}
+char check_pigz() {
+	char *path = getenv("PATH");
+	char *item = NULL;
+	int found  = 0;
+
+	if (!path) 
+		return 0;
+
+	path = strdup(path);
+	char real_path[MAXLINE]; // or PATH_MAX or something smarter
+	for (char *item = strtok(path, ":"); !found && item; item = strtok(NULL, ":")) {
+		sprintf(real_path, "%s/pigz", item);
+		// printf("Testing %s\n", real_path);
+		if ( is_file(real_path) && !(access(real_path, F_OK) || access(real_path, X_OK))) 
+			// check if the file exists and is executable
+			found = 1;
+	}
+	free(path);
+	return found;
+}
+
 void check_arguments (char **files, int length, int mode) {
-
-
+	if (_compression_mode == IO_PGZIP && !check_pigz()) {
+		LOG("** pigz not found in PATH. Using zlib compression instead. **\n");
+		_compression_mode = IO_GZIP;
+	}
 
 	if (_interleave && _use_second_file)
 		ERROR("Interleaved option (-i) cannot be used with paired-end option (-r).\n");
@@ -118,6 +148,7 @@ void check_arguments (char **files, int length, int mode) {
 	}
 }
 
+
 int main (int argc, char **argv) {
 	setlocale(LC_ALL,"");
 	_time_elapsed = TIME;
@@ -126,7 +157,7 @@ int main (int argc, char **argv) {
 	_thread_count = MIN(4, sysconf( _SC_NPROCESSORS_ONLN ) - 1);
 
 	LOG("SCALCE %s [pthreads; available cores=%d]\n", SCALCE_VERSION, _thread_count+1);
-	if (_thread_count > 1)
+	if (_thread_count > 1) 
 		_compression_mode = IO_PGZIP;
 	else
 		_compression_mode = IO_GZIP;
@@ -140,7 +171,8 @@ int main (int argc, char **argv) {
 		{ "compression",       1, NULL, 'c' },
 		{ "output",            1, NULL, 'o' },
 		{ "sample-size",       1, NULL, 's' },
-	//	{ "patterns",          1, NULL, 'P' },
+		{ "no-qualities",      0, NULL, 'Q' },
+		{ "patterns",          1, NULL, 'P' },
 	//	{ "interleave",        0, NULL, 'i' },
 		{ "temp-directory",    1, NULL, 't' },
 		{ "bucket-set-size",   1, NULL, 'B' },
@@ -153,7 +185,7 @@ int main (int argc, char **argv) {
 		{ NULL,                0, NULL,  0  }
 	};
 	do {
-		opt = getopt_long (argc, argv, "vhp:T:dc:o:s:t:B:rAn:"/*"i"*/, long_opt, NULL);
+		opt = getopt_long (argc, argv, "vhp:T:dc:o:s:t:B:rQAn:P:"/*"i"*/, long_opt, NULL);
 		switch (opt) {
 			case 'v':
 			//	LOG("%s\n",SCALCE_VERSION);
@@ -210,15 +242,18 @@ _compression_mode = IO_GZIP;
 			case 'r':
 				_use_second_file = 1;
 				break;
+			case 'Q':
+				_compress_qualities = 0;
+				break;
 			case 's':
 				_quality_sample_lines = atoi (optarg);
 				break;
 			case 'd':
 				mode = 1;
 				break;
-		//	case 'P':
-		//		strncpy (_pattern_path, optarg, MAXLINE);
-		//		break; 
+			case 'P':
+				strncpy (_pattern_path, optarg, MAXLINE);
+				break; 
 			case 't':
 				strncpy (_temp_directory, optarg, MAXLINE);
 				break;

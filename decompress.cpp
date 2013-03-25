@@ -113,13 +113,16 @@ void decompress (const char *path, const char *out) {
 		if (!f_alive (fQ + i)) 
 			ERROR("Cannot find quality file %s!\n", buffer);
 
-		f_read (fQ+i, buffer, 8);
+		if (_compress_qualities)
+			f_read (fQ+i, buffer, 8);
 		f_read (fN+i, buffer, 8);
 		/* read metadata */
 		f_read (fR+i, len+i, sizeof(int32_t));
-		f_read (fQ+i, phredOff+i, sizeof(int64_t));
+		
+		if (_compress_qualities)
+			f_read (fQ+i, phredOff+i, sizeof(int64_t));
 
-		if (!_no_ac) {
+		if (_compress_qualities && !_no_ac) {
 			for (int x = 0; x < AC_DEPTH; x++) // write stat stuff
 				for (int j = 0; j < AC_DEPTH; j++) 
 					for (int k = 0; k < AC_DEPTH; k++) { 
@@ -191,7 +194,7 @@ void decompress (const char *path, const char *out) {
 		uint32_t n_id = 0, n_lane = 0, n_i, n_l, n_x, n_y;
 		nameidx = 0;
 		/* init qq */
-		if(!_no_ac) {
+		if(_compress_qualities && !_no_ac) {
 			set_ac_stat(ac_freq3[F], ac_freq4[F]);
 			ac_read(fQ+F, 0, 0);
 		}
@@ -235,11 +238,13 @@ void decompress (const char *path, const char *out) {
 
 
 			/* quals */
-			if (!_no_ac)
-				ac_read(fQ + F, buffer, bc[F]);
-			else
-				f_read(fQ + F, buffer, bc[F]);
-			
+			if (_compress_qualities) {
+				if (!_no_ac)
+					ac_read(fQ + F, buffer, bc[F]);
+				else
+					f_read(fQ + F, buffer, bc[F]);
+			}
+
 			/* reads */
 			int64_t end = 0;
 			int r = f_read (fR+F, o, SZ_READ(len[F]-corlen));
@@ -257,18 +262,21 @@ void decompress (const char *path, const char *out) {
 			for (int i = 0; i < len[F] - end; i++) 
 				l[lc++] = alphabet[ o[i >> 2] >> ((~i & 3) << 1) & 3 ];
 
+			if (_compress_qualities)
 			for(int i = 0; i < len[F]; i++) {
 				if (!buffer[i]) l[i] = 'N';
 				buffer[i] += phredOff[F];
 			}
 
 			l[len[F]] = '\n';
-			l[len[F]+1] = '+';
-			l[len[F]+2] = '\n';
-			f_write(pfo[F],l,len[F]+3);
-			buffer[len[F]] = '\n';
-			f_write(pfo[F],buffer,len[F]+1);
-
+			f_write(pfo[F],l,len[F]+1);
+			if (_compress_qualities) {
+				char cx;
+				cx = '+';  f_write(pfo[F], &cx, 1);
+				cx = '\n'; f_write(pfo[F], &cx, 1);
+				f_write(pfo[F],buffer,len[F]+1);
+				buffer[len[F]] = '\n';
+			}
 			nameidx++;
 		}
 	}
@@ -288,7 +296,7 @@ void decompress (const char *path, const char *out) {
 	}
 	if(_use_second_file)
 		f_free(fo+1);
-	if(!_no_ac)
+	if(_compress_qualities && !_no_ac)
 		ac_finish();
 	_time_elapsed = (TIME-_time_elapsed)/1000000;
 	LOG("\tTime elapsed:     %02d:%02d:%02d\n", _time_elapsed/3600, (_time_elapsed/60)%60, _time_elapsed%60);

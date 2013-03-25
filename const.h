@@ -42,6 +42,8 @@
 #include <inttypes.h>
 #include <sys/types.h>
 #include <sys/sysinfo.h>
+#include <unistd.h>
+#include <sys/stat.h>
 
 void MEM(char *A);
 
@@ -97,6 +99,7 @@ extern char      _interleave;
 extern int       _decompress;
 
 extern int       _no_ac ;
+extern int     _compress_qualities;
 extern int32_t read_length[2];                 /* length of read in one fastq file */
 extern int64_t reads_count;                /* total read count in all input files */
 

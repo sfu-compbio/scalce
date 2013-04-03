@@ -4,6 +4,9 @@ Mandatory parameters:
 -o, --output
 	Specifies the prefix for the output file names. Extensions and basic 
 	information will be appended.
+	Standard output is supported in decompression mode. Use - to indicate
+	standart output (i.e. -o -). Standard output is supported unless you 
+	use -S or -r parameters during decompression.
 
 Shared arguments (both for compression and decompression)
 -r, --paired-end
@@ -25,6 +28,10 @@ Decompression arguments
 -d, --decompress
 	Uncompress scalce files. Provide just one file name (scalceq for example), 
 	and the program will take care for the other files.
+-S, --split-reads [count]
+	Split the output files into a bunch of files, where each file contains the
+	given	number of the reads.
+	Default: 0 (do not split)
 
 Compression arguments
 -B, --bucket-set-size [size][MG]

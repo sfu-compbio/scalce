@@ -56,11 +56,13 @@ void get_file_name (char *name, char c) {
 void decompress (const char *path, const char *out) {
 	uint8_t buffer[MAXLINE], buffer2[MAXLINE];
 
-	aho_trie *trie = _pattern_path[0] ? read_patterns_from_file(_pattern_path) : read_patterns ();
-
+	aho_trie *trie = _pattern_path[0] 
+		? read_patterns_from_file(_pattern_path) 
+		: read_patterns ();
 	ac_init();
 
-	int32_t len[2]; int64_t nl[2], phredOff[2];
+	int32_t len[2]; 
+	int64_t nl[2], phredOff[2];
 
 	int mode[2] = { IO_SYS, IO_SYS }; uint8_t c[2];
 
@@ -148,14 +150,18 @@ void decompress (const char *path, const char *out) {
 
 		//	if (_split_reads)
 		//		snprintf((char*)buffer, MAXLINE, "%s_%d.part%02d.fastq", out,i+1, file++);
-		if (_interleave && !strcmp("-",out))
+		if (!strcmp("-",out))
 			snprintf((char*)buffer, MAXLINE, "-");
-		else
-			snprintf((char*)buffer, MAXLINE, "%s_%d.fastq", out,i+1);
+		else {
+			if (_split_reads)
+				snprintf((char*)buffer, MAXLINE, "%s_%d.1.fastq", out,i+1);
+			else
+				snprintf((char*)buffer, MAXLINE, "%s_%d.fastq", out,i+1);
+		}
 		f_open (fo + i, (char*)buffer, IO_WRITE);
 	}
-	if (_interleave)
-		pfo[1] = fo;
+//	if (_interleave)
+//		pfo[1] = fo;
 
 	int bc[2]; bc[0] = SZ_QUAL(len[0]); bc[1] = SZ_QUAL(len[1]);
 	//	LOG("--->%d\n",bc[0]);
@@ -187,9 +193,12 @@ void decompress (const char *path, const char *out) {
 
 	int sz_meta = 1;
 	if (len[0] > 255) sz_meta = 2;
-
 	int read_next_read_info = 0;
+
+
 	for (int F = 0; F < 1 + (_interleave|_use_second_file); F++) {
+		int reads_so_far = 0, files_so_far = 1;
+
 		int32_t core, corlen;
 		uint32_t n_id = 0, n_lane = 0, n_i, n_l, n_x, n_y;
 		nameidx = 0;
@@ -200,6 +209,7 @@ void decompress (const char *path, const char *out) {
 		}
 
 		for (int64_t K = 0; ; K++) {
+			
 			/* names */
 			if (K == read_next_read_info && !F) {
 				uint64_t len = 0;
@@ -213,6 +223,17 @@ void decompress (const char *path, const char *out) {
 				//	if(corlen)LOG("i=%d, next=%d, core=%s[%d]\n", K, read_next_read_info, patterns[core],core);
 			}
 			else if (F && K == read_next_read_info) break;
+
+			if (_split_reads && reads_so_far == _split_reads) {
+				LOG("Created part %d/%d as %s with %d reads\n", files_so_far, F+1, pfo[F]->file_name, reads_so_far);
+
+				reads_so_far = 0;
+				files_so_far++;
+				
+				f_close(pfo[F]);
+				snprintf((char*)buffer, MAXLINE, "%s_%d.%d.fastq", out, F+1, files_so_far);
+				f_open (pfo[F], (char*)buffer, IO_WRITE);
+			}
 
 			/* names */
 			if (names) {
@@ -263,10 +284,10 @@ void decompress (const char *path, const char *out) {
 				l[lc++] = alphabet[ o[i >> 2] >> ((~i & 3) << 1) & 3 ];
 
 			if (_compress_qualities)
-			for(int i = 0; i < len[F]; i++) {
-				if (!buffer[i]) l[i] = 'N';
-				buffer[i] += phredOff[F];
-			}
+				for(int i = 0; i < len[F]; i++) {
+					if (!buffer[i]) l[i] = 'N';
+					buffer[i] += phredOff[F];
+				}
 
 			l[len[F]] = '\n';
 			f_write(pfo[F],l,len[F]+1);
@@ -274,16 +295,15 @@ void decompress (const char *path, const char *out) {
 				char cx;
 				cx = '+';  f_write(pfo[F], &cx, 1);
 				cx = '\n'; f_write(pfo[F], &cx, 1);
-				f_write(pfo[F],buffer,len[F]+1);
 				buffer[len[F]] = '\n';
+				f_write(pfo[F],buffer,len[F]+1);
 			}
 			nameidx++;
+			reads_so_far++;
 		}
+		LOG("Created part %d/%d as %s with %d reads\n", files_so_far, F+1, pfo[F]->file_name, reads_so_far);
 	}
 //	int lR = (_split_reads? _split_reads-limit : nl[0]-limit);
-	LOG("Created part %d as %s with %d reads\n", file, pfo[0]->file_name,read_next_read_info);
-	if (_use_second_file)
-		LOG("Created part %d as %s with %d reads\n", file, pfo[1]->file_name,read_next_read_info);
 
 	f_free(fR);
 	f_free(fQ);

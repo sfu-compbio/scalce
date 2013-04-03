@@ -123,8 +123,8 @@ void check_arguments (char **files, int length, int mode) {
 		ERROR ("Too many files specified (decompression only supports one file).\n");
 	if (_quality_lossy_percentage < 0 || _quality_lossy_percentage > 100)
 		ERROR ("Percentage must be in range [0,100].\n");
-	if (!strcmp (_output_path, "-") && !(_interleave && mode))
-		ERROR ("stdout can be only used with interleaved files in decompression mode.\n");
+	if (!strcmp (_output_path, "-") && (_split_reads || _use_second_file))
+		ERROR ("stdout can be only used with single-end file decompression. It cannot be used with --split-reads option!\n");
 
 	struct stat s;
 	if (!mode) {
@@ -178,14 +178,14 @@ int main (int argc, char **argv) {
 		{ "bucket-set-size",   1, NULL, 'B' },
 		{ "paired-end",        0, NULL, 'r' },
 		{ "skip-names",        1, NULL, 'n' },
-	//	{ "split-reads",       1, NULL, 'S' },
+		{ "split-reads",       1, NULL, 'S' },
 		{ "threads",           1, NULL, 'T' },
 		{ "version",		     0, NULL, 'v' },
 		{ "no-arithmetic",     0, NULL, 'A' },
 		{ NULL,                0, NULL,  0  }
 	};
 	do {
-		opt = getopt_long (argc, argv, "vhp:T:dc:o:s:t:B:rQAn:P:"/*"i"*/, long_opt, NULL);
+		opt = getopt_long (argc, argv, "vhp:T:dc:o:s:t:B:rQAn:P:S:"/*"i"*/, long_opt, NULL);
 		switch (opt) {
 			case 'v':
 			//	LOG("%s\n",SCALCE_VERSION);
@@ -236,9 +236,9 @@ int main (int argc, char **argv) {
 				if(_thread_count == 1 && _compression_mode == IO_PGZIP)
 _compression_mode = IO_GZIP;
 				break;
-		//	case 'S':
-		//		_split_reads = atoi (optarg);
-		//		break;
+			case 'S':
+				_split_reads = atoi (optarg);
+				break;
 			case 'r':
 				_use_second_file = 1;
 				break;

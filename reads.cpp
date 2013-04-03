@@ -347,11 +347,7 @@ aho_trie *read_patterns_from_file (const char *path) {
 	uint64_t val;
 
 	FILE *f = fopen(path, "r");
-	while (fscanf(f, "%d %llu", &len, &val) != EOF) {
-		if (len > 12) {
-		//	LOG("\tskipping (%llu,%d)\n", val, len);
-			continue;
-		}
+	while (fscanf(f, "%d %llx", &len, &val) != EOF) {
 		for (int i = 0; i < len; i++) {
 			patterns[pattern_c][len - i - 1] = alphabet[val & 3];
 			val >>= 2;

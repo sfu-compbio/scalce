@@ -603,7 +603,7 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 
 	/* compress and output */
 	int64_t scalce_preprocessing_time = TIME;
-	int64_t new_size = combine_and_compress_with_split (temp_file_count, output, (_split_reads ? _split_reads : reads_count), qmap[0].offset);
+	int64_t new_size = combine_and_compress_with_split (temp_file_count, output, /*(_split_reads ? _split_reads : */reads_count, qmap[0].offset);
 
 	/* cleaning again */
 	LOG("Cleaning ...\n");

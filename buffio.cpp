@@ -90,7 +90,7 @@ int64_t Sopen (const char *path, int mode, char *c) {
 	int64_t handle;
 
 	//int handle;
-	if (!strcmp (path, "-")) handle = 1; // (int)stdout;
+	if (!strcmp (path, "-")) handle = (int64_t)stdout;
 	else handle = (int64_t)fopen(path, mode ? "wb" : "rb"
 /*	else handle = open64 (path, //O_DIRECT | O_SYNC |
 			(mode ? (O_CREAT | O_WRONLY | O_TRUNC) 
@@ -103,7 +103,10 @@ int64_t Sopen (const char *path, int mode, char *c) {
 }
 
 int     Sclose (void* handle)                      { return fclose ((FILE*)handle); }
-int64_t Swrite (void* handle, void *c, int64_t sz) { return fwrite (c, 1, sz, (FILE*)handle); }	
+int64_t Swrite (void* handle, void *c, int64_t sz) { return fwrite (c, 1, sz, 
+	//handle==(void*)0x1 ? stdout : (FILE*)handle);
+	(FILE*)handle);
+}
 int64_t Sread  (void* handle, void *c, int64_t sz) { return fread (c, 1, sz, (FILE*)handle); }
 int64_t Sseek  (void* handle, int64_t l)           { return fseek ((FILE*)handle, l, SEEK_SET); }
 char   *Sgets  (void* handle, char *c, int64_t l)  { return fgets (c, l, (FILE*)handle); }

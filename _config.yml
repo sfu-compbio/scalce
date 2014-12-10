@@ -1,0 +1,17 @@
+---
+
+### site serving configuration ###
+exclude: [CNAME, README.md, .gitignore]
+permalink: / ## disables post output
+timezone: null
+lsi: false
+markdown: kramdown
+highlighter: pygments
+
+
+### content configuration ###
+name:		 "SCALCE"
+title:       "SCALCE: boosting Sequence Compression Algorithms using Locally Consistent Encoding"
+keywords:    "scalce, compression, fastq, bioinformatics, reordering, lcp"
+description: "A tool for compressing FASTQ files"
+source_link: "http://sfu-compbio.github.io/scalce/"

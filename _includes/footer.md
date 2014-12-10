@@ -1,0 +1,1 @@
+<sub>&copy; 2011--2015 [Lab for Computational Biology at SFU](http://compbio.cs.sfu.ca). All rights reserved. Based upon Github's Hack theme and [SinglePaged](http://t413.com/SinglePaged/) [Jekyll](http://jekyllrb.com) theme.</sub>

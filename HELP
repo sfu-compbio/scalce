@@ -1,0 +1,80 @@
+USAGE: scalce [OPTION]... -o [OUTPUT] [FILES]...
+
+Mandatory parameters:
+-o, --output
+	Specifies the prefix for the output file names. Extensions and basic 
+	information will be appended.
+	Standard output is supported in decompression mode. Use - to indicate
+	standard output (i.e. -o -). Standard output is supported unless you 
+	use -S or -r parameters during decompression.
+
+Shared arguments (both for compression and decompression)
+-r, --paired-end
+	Use paired-end FASTQ files when the two ends are in separate files. The
+	files should be named with _1 and _2. When you are passing it as input, only 
+	give _1 file and SCALCE will replace _1 with _2 and read the second file.
+	File name Example: XX_1.fq XX_2.fq
+-n, --skip-names [library]
+	Discard original read names, and rename each read with the
+	library prefix, such as library.1, library.2, ....
+	This option can improve compression rate a lot.
+	Utility arguments
+-h, --help
+	Prints short usage information.
+-v, --version
+	Prints the current version of SCALCE.
+
+Decompression arguments
+-d, --decompress
+	Uncompress scalce files. Provide just one file name (scalceq for example), 
+	and the program will take care for the other files.
+-S, --split-reads [count]
+	Split the output files into a bunch of files, where each file contains the
+	given	number of the reads.
+	Default: 0 (do not split)
+
+Compression arguments
+-B, --bucket-set-size [size][MG]
+	Set bucket set size (M)egabytes or (G)igabytes. This parameter limits
+	the main memory accessible to SCALCE. Swap files will be used to keep 
+	all necessary data.
+	Default: 4G
+-c, --compression [mode]
+	Select compression mode. Currently available modes are:
+		no - No compression
+		gz - gzip compression level 6
+		pigz - parallelized gzip
+		bz - bzip2 compression
+	Default: gz, or pigz if number of threads is greater than 1
+-A, --no-arithmetic
+	Disable arithmetic coding for the quality compression and use default 
+	compression mode. This helps reduce both compression and decompression time, 
+	but the compression ratio may suffer. 
+	Default: not activated
+-p, --lossy-percentage [percentage]
+	Set lossy error percentage.
+	Default: 0 (no lossy)
+-s, --sample-size [count]
+	Specifies how many quality values should be used for statistical analysis
+	during the lossy transformation table creation.
+	Default: 100000
+-t, --temp-directory [directory]
+	Set directory for holding temporary files. 
+	Default: __temp__
+-T, --threads [num]
+	Specify the number of working threads
+	Default: 4 (if the system offers less than 4 cores, number of threads will be automatically adjusted)
+
+EXAMPLE USAGE
+scalce input_1.fastq -o result
+	Compress input_1.fastq to the files result.00_1.scalcen.gz, result.00_1.scalcer.gz 
+	and result.00_1.scalceq.gz
+scalce input_1.fastq -r -o result -n library
+	Compress input_1.fastq together with its paired end input_2.fastq, discarding 
+	the names and setting library name to library
+scalce input_1.scalcen -d -o something.fastq
+	Decompress the scalce file to something.fastq
+
+MORE INFORMATION & REPORTING BUGS & LICENCE
+http://scalce.sourceforge.net
+

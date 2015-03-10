@@ -2,7 +2,7 @@
 title: "Notes"
 ---
 
-## Release notes
+# Release notes
 
 - *(20-May-2013)* **SCALCE version 2.7 release**
 	- Bugfixes (no-arithmetic fix)

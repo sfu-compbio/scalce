@@ -1,37 +1,45 @@
 ---
 ---
 
-<!DOCTYPE html>
-<html dir="ltr" lang="en">
+<!doctype html>
+<html>
+
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="chrome=1">
+  
   <title>{{ site.title }}</title>
-	<meta name="keywords" content="{{ site.keywords }}">
-	<meta name="description" content="{{ site.description }}">
-  <link rel="stylesheet" href="combo.css">
-  <link href='http://fonts.googleapis.com/css?family=Raleway:400,300,700' rel='stylesheet' type='text/css'>
-  <link rel="stylesheet" href="//netdna.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css">
-  {% if site.favicon %}<link rel="shortcut icon" href="{{ site.favicon }}" type="image/x-icon">{% endif %}
-	{% if site.touch_icon %}<link rel="apple-touch-icon" href="{{ site.touch_icon }}">{% endif %}
+  <meta name="keywords" content="{{ site.keywords }}">
+  <meta name="description" content="{{ site.description }}">
+
+  <link rel="stylesheet" href="stylesheets/styles.css">
+  <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+  <script src="javascripts/scale.fix.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <!--[if lt IE 9]>
+  <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+  <![endif]-->
 </head>
 
-
 <body>
+<div class="wrapper">
   <header>
-    <div class="container">
-      <h1>{{ site.name }}</h1>
-      <div id="menu">
+    <h1 class="header">{{ site.name }}</h1>
+    <p class="header">{{ site.description }}</p>
+    <ul class="downloads">
+      <li class="download"><a class="buttons" href="https://github.com/sfu-compbio/scalce/tarball/master">Get source!</a></li>
+      <li class="download"><a class="buttons" href="https://github.com/sfu-compbio/scalce/tarball/binary">Get binary!</a></li>
+      <li><a class="buttons github" href="https://github.com/sfu-compbio/scalce">View on GitHub</a></li>
+    </ul>
+    <br />
+    <ul class="menu">
       {% for node in site.posts reversed %}
         {% capture id %}{{ node.id | remove:'/' | downcase }}{% endcapture %}
-        <a href="#{{id}}">{{node.title}}</a>
+        <li><a href="#{{id}}">{{node.title}}</a></li>
       {% endfor %}
-      </div>
-    </div>
+    </ul>
   </header>
 
-
- 
   <div id="main_content">     
      {% for page in site.posts reversed %}
       {% capture id %}{{ page.id | remove:'/' | downcase }}{% endcapture %}
@@ -42,14 +50,11 @@
       </section>
     {% endfor %}
   </div>
-    
-      <div id="footer" class="section text-white">
-      <div class="container">
-        {% capture foottext %} {% include footer.md %} {% endcapture %}
-        {{ foottext | markdownify }}
-      </div>
-    </div>
 
+  <footer>
+    <sub>&copy; 2011&ndash;{{ site.time | date: '%Y'| remove: '<p>' | remove: '</p>' }} {{ '[Lab for Computational Biology at SFU](http://compbio.cs.sfu.ca). All rights reserved.<br/> Hosted on [GitHub Pages](http://pages.github.com/). Design based upon Dinky theme.' | markdownify | remove: '<p>' | remove: '</p>' }}</sub>
+  </footer>
+
+  <!--[if !IE]><script>fixScale(document);</script><![endif]-->    
 </body>
 </html>
-

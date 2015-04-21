@@ -439,6 +439,8 @@ buffered_file input[2];
 int temp_file_count = 0;    
 uint64_t total_size, file_reads;
 
+int xlen1 = 0, xlen2 = 0;
+
 void *thread (void *vt) {
 	int t = *(int*)vt;
 
@@ -462,12 +464,22 @@ void *thread (void *vt) {
 			return 0;
 		}
 		f_gets(input, read, MAXLINE);
+		int l = strlen(read); 
+
+		if (!l || read[0] == '\n') { fprintf(stderr,"Whooops... %s is empty, skipping it!\n", name); pthread_spin_unlock(&r_spin); continue; } 
+		if (!xlen1) xlen1 = l; 
+		else if (l != xlen1) { fprintf(stderr,"Whooops... read names in /1 do not match (%d vs %d)!\n", xlen1-1, l-1); exit(1); }
+
 		f_gets(input, qual, MAXLINE);
 		f_gets(input, qual, MAXLINE);
 		buffered_file *fn = (_interleave ? input : (_use_second_file ? input + 1 : 0));
 		if (fn) {
 			f_gets(fn, read2, MAXLINE);
 			f_gets(fn, read2, MAXLINE);
+			l = strlen(read2); 
+			if (!l || read2[0] == '\n') { fprintf(stderr,"Whooops... %s is empty, skipping it!\n", name);  pthread_spin_unlock(&r_spin);continue; } 
+			if (!xlen2) xlen2 = l;
+			else if (l != xlen2) { fprintf(stderr,"Whooops... read names in /2 do not match (%d vs %d)!\n", xlen2-1, l-1); exit(1); }
 			f_gets(fn, qual2, MAXLINE);
 			f_gets(fn, qual2, MAXLINE);
 		}	
@@ -629,4 +641,6 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	LOG("\tOriginal size: %.2lfM, new size: %.2lfM, compression factor: %.2lf\n", original_size/(1024.0*1024.4), new_size/(1024.0*1024.0), (original_size/(double)new_size));
 	
 }
+
+
 

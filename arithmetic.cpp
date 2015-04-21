@@ -278,6 +278,7 @@ void ac_finish() {
 }
 
 void ac_write (buffered_file *fo, uint8_t *data, int size) {
+	//fprintf(stderr,">%d",size);
 	static int current_position = 0;
 	if (!size) { // flush
 		int l_th = current_position / buffer_size;

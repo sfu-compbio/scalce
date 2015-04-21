@@ -38,7 +38,7 @@
 
 #include "buffio.h"
 
-#define AC_DEPTH 60
+#define AC_DEPTH 80
 extern uint64_t 
 			ac_freq3[2][AC_DEPTH*AC_DEPTH],    // 16K
 		   ac_freq4[2][AC_DEPTH*AC_DEPTH*AC_DEPTH]; // 760k

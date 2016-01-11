@@ -4,6 +4,12 @@ title: "Notes"
 
 # Release notes
 
+- *(10-Jan-2016)* **SCALCE version 2.8 release**
+	- Bugfixes (arithmetic decoding bugfix)
+	- Fixed a decompression bug when number of reads was greater than 2^32. Compression was not affected.
+	- *New*: support for variable length reads via `scalce-pacbio`.
+
+
 - *(20-May-2013)* **SCALCE version 2.7 release**
 	- Bugfixes (no-arithmetic fix)
 

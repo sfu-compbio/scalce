@@ -57,7 +57,7 @@ void quality_mapping_init (quality_mapping *q, buffered_file *f, int *read_lengt
 	memset (stat, 0, sizeof stat);
 
 	// read sample data
-	for (int i = 0; i < _quality_sample_lines; i++) {
+	if (!_is_fasta) for (int i = 0; i < _quality_sample_lines; i++) {
 		if (_interleave == 20) { /* skip first part in interleaved */
 			f_gets(f, line, MAXLINE);
 			f_gets(f, line, MAXLINE);
@@ -82,6 +82,11 @@ void quality_mapping_init (quality_mapping *q, buffered_file *f, int *read_lengt
 			f_gets(f, line, MAXLINE);
 			f_gets(f, line, MAXLINE);
 		}
+	} else { 
+		f_gets(f, line, MAXLINE);
+		f_gets (f, line, MAXLINE);
+		int l = strlen (line)-1;
+		(*read_length) = l;
 	}
 
 	q->offset = 64;

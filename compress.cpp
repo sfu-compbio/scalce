@@ -54,6 +54,7 @@
 //buffered_file file_pool[MAXOPENFILES];  /* handles for files */
 int32_t read_length[2];                 /* length of read in one fastq file */
 int64_t reads_count = 0;                /* total read count in all input files */
+int64_t character_count[2];
 
 char global_buffer[GLOBALBUFSZ];        /* global shared buffer for reading/writing */
 uint8_t metadata[MAXMETA];              /* metadata file contents */
@@ -105,8 +106,16 @@ int merhamet_merge (int flc, int idx) {
 	int32_t prevMinV, prevMinC;
 	while (binex) {
 		int64_t len;
-		for (int i = 0; i <= idx-(idx>3); i++)
+
+		int END = idx-(idx>3);
+		#ifdef PACBIO
+			if (idx == 6 && !_use_second_file) END = 3;
+		#endif
+
+		for (int i = 0; i <= END; i++)  {
 			f_read (file_pool + minI + 1, &len, sizeof(int64_t));
+		}
+		//LOG("%d len=%d\n", idx, len);
 		for (int64_t s = 0; s < len; ) {
 			int64_t l = f_read (file_pool + flc + minI + 1, global_buffer, MIN (GLOBALBUFSZ, len-s));
 			f_write (file_pool + 0, global_buffer, l);
@@ -116,6 +125,10 @@ int merhamet_merge (int flc, int idx) {
 		totalLen += len;
 		for (int i = idx + (idx<=3); i < 3 + 2 * _use_second_file; i++)
 			f_read (file_pool + minI + 1, &len, sizeof(int64_t));
+		#ifdef PACBIO
+			if (idx != 6)
+				f_read (file_pool + minI + 1, &len, sizeof(int64_t));
+		#endif
 
 		prevMinV = minV;
 		prevMinC = minC;
@@ -136,9 +149,21 @@ int merhamet_merge (int flc, int idx) {
 			memcpy (metadata + metadata_pos, &prevMinV, sizeof(int32_t));
 			metadata_pos += sizeof(int32_t);
 			memcpy (metadata + metadata_pos, &prevMinC, sizeof(int32_t));
-			metadata_pos += sizeof(int32_t) + sizeof(int64_t) * (idx - (idx > 3));
+			#ifdef PACBIO
+				metadata_pos += sizeof(int32_t) + sizeof(int64_t) * (idx - (idx > 3));
+				if (idx == 6 && !_use_second_file)
+					metadata_pos -= 2 * sizeof(int64_t);
+			#else
+				metadata_pos += sizeof(int32_t) + sizeof(int64_t) * (idx - (idx > 3));
+			#endif
 			memcpy (metadata + metadata_pos, &totalLen, sizeof(int64_t));
-			metadata_pos += sizeof(int64_t) *  (3 + 2 * _use_second_file - idx + (idx > 3));
+			#ifdef PACBIO
+				if (idx != 6) 
+					metadata_pos += sizeof(int64_t) *  (3 + 2 * _use_second_file - idx + (idx > 3));
+				metadata_pos += sizeof(int64_t);
+			#else
+				metadata_pos += sizeof(int64_t) *  (3 + 2 * _use_second_file - idx + (idx > 3));
+			#endif
 			totalLen = 0;
 		}
 	}
@@ -165,7 +190,7 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	if (_use_second_file)
 		LOG ("using paired files, ");
 
-	buffered_file file_pool[6];
+	buffered_file file_pool[7];
 	char buffer[MAXLINE];
 	for (int i = 0; i <= 3 + 2 * _use_second_file; i++) { 
 		snprintf(buffer, MAXLINE, "%s/t_%03d_%d.tmp", _temp_directory, fl, i);
@@ -177,6 +202,15 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	              *fR = file_pool + 1,
 	              *fQ = file_pool + 2,
 	              *fM = file_pool + 3;
+	#ifdef PACBIO
+	{
+		int i = 6;              
+		snprintf(buffer, MAXLINE, "%s/t_%03d_%d.tmp", _temp_directory, fl, i);
+		f_init (file_pool + i, IO_SYS);
+		f_open (file_pool + i, buffer, IO_READ);
+	}
+	    buffered_file *fL = file_pool + 6;
+	#endif
 
 	if (_compress_qualities && !_no_ac) 
 		ac_init();	
@@ -195,11 +229,14 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	 *   		LibName		*
 	 */
 
-	buffered_file foQ, foR, foN;
+	buffered_file foQ, foR, foN, foL;
 
 	f_init (&foQ, _no_ac ? _compression_mode : IO_SYS);
 	f_init (&foR, _compression_mode);
 	f_init (&foN, _compression_mode);
+	#ifdef PACBIO
+		f_init (&foL, _compression_mode);
+	#endif
 	LOG ("compression: %s\n", 
 			_compression_mode == IO_SYS 
 				? "no compression"
@@ -218,10 +255,14 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	int sz_meta = 1;
 	if (read_length[0] > 255) sz_meta = 2;
 
+	#ifdef PACBIO
+	sz_meta = 4;
+	#endif
+
 	uint64_t size;
 	for (int NP = 0; NP < _use_second_file + 1; NP++) {
 		int32_t id, core;
-		int64_t lR = 0, lQ = 0, lN = 0, temp;
+		int64_t lR = 0, lQ = 0, lN = 0, lL = 0, temp;
 
 		snprintf (buffer, MAXLINE, "%s_%d.scalcen", output, NP+1);
 		f_open (&foN, buffer, IO_WRITE);
@@ -229,6 +270,10 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		f_open (&foQ, buffer, IO_WRITE);
 		snprintf (buffer, MAXLINE, "%s_%d.scalcer", output, NP+1);
 		f_open (&foR, buffer, IO_WRITE);
+		#ifdef PACBIO
+			snprintf (buffer, MAXLINE, "%s_%d.scalcel", output, NP+1);
+			f_open (&foL, buffer, IO_WRITE);
+		#endif
 
 		f_write (&foR, magic, 8);
 		f_write (&foR, &_no_ac, sizeof(int));
@@ -240,7 +285,11 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		if (_compress_qualities && !_no_ac) {
 			uint64_t _lmt_ = (1LL << 32) - 1;
 			int factor = 1;
-			factor += (reads_count * read_length[NP]) / _lmt_;
+			#ifdef PACBIO
+				factor += character_count[NP] / _lmt_;
+			#else
+				factor += (reads_count * read_length[NP]) / _lmt_;
+			#endif
 			LOG("shrink factor for %d: %d\n", NP, factor);
 
 			for (int i = 0; i < AC_DEPTH; i++) // write stat stuff
@@ -257,9 +306,18 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 						uint32_t x = *p;
 						f_write(&foQ, &x, sizeof(uint32_t));
 					}
+			// for (int i = 0; i < AC_DEPTH; i++) // write stat stuff
+			// 	for (int j = 0; j < AC_DEPTH; j++) 
+			// 		for (int k = 0; k < AC_DEPTH; k++) {
+			// 			printf("%d %d %d %d %d\n", NP, i, j, k, ac_freq4[NP][(i*AC_DEPTH+j)*AC_DEPTH+k]);
+			// 		}
 			set_ac_stat(ac_freq3[NP], ac_freq4[NP]);
 		
-			uint64_t qualtotalsize = reads_count * read_length[NP];
+			#ifdef PACBIO
+				uint64_t qualtotalsize = character_count[NP];
+			#else
+				uint64_t qualtotalsize = reads_count * read_length[NP];
+			#endif
 			f_write(&foQ,&qualtotalsize,sizeof(uint64_t));
 		}
 
@@ -288,14 +346,22 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 				f_read (fM, lR2, sizeof(int64_t));
 				f_read (fM, lQ2, sizeof(int64_t));
 			}
-
+			#ifdef PACBIO
+				f_read (fM, &lL, sizeof(int64_t));
+			#endif
 			if (!NP) {
 				f_write(&foR, &core, sizeof(int32_t));
 				uint64_t size;
-				if (core != MAXBIN - 1) // root or non root
-					size = lR / ( SZ_READ( read_length[0] - strlen(patterns[core]) ) + sz_meta );
-				else
-					size = lR / ( SZ_READ(read_length[0])+sz_meta );
+
+				#ifdef PACBIO
+					int div = sizeof(uint32_t) + _use_second_file * sizeof(uint32_t);
+					size = lL / div;
+				#else
+					if (core != MAXBIN - 1) // root or non root
+						size = lR / ( SZ_READ( read_length[0] - strlen(patterns[core]) ) + sz_meta ); // how many reads.... naaa'
+					else
+						size = lR / ( SZ_READ(read_length[0])+sz_meta );
+				#endif
 				f_write(&foR, &size, sizeof(int64_t));
 			}
 			for (int64_t i = 0; i < lR; i += GLOBALBUFSZ) {
@@ -318,6 +384,13 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 			}
 			else;
 
+			#ifdef PACBIO
+				for (int64_t i = 0; i < lL; i += GLOBALBUFSZ) {
+					int64_t r = f_read (fL, global_buffer, MIN (lL - i, GLOBALBUFSZ));
+					f_write (&foL, global_buffer, r);
+				}
+			#endif
+
 			__nC__++;
 		}
 		printf("Written %d cores\n", __nC__);
@@ -327,22 +400,36 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 		f_close (&foR);
 		f_close (&foN);
 		f_close (&foQ);
+		#ifdef PACBIO
+			f_close(&foL);
+		#endif
 //		DLOG("\tData for paired-end %d with %lld reads in files (%s, %s, %s)\n", NP, reads_written, foN.file_name, foQ.file_name, foR.file_name);
 
 		// ...
 		struct stat s;
-		stat (foR.file_name, &s); new_size += s.st_size;
-		LOG("\tRead bit size:    paired end %d = %.2lf\n", NP, (s.st_size * 8.0) / double(reads_count * read_length[NP]));
-		stat (foQ.file_name, &s); new_size += s.st_size;
-		LOG("\tQuality bit size: paired end %d = %.2lf\n", NP, (s.st_size * 8.0) / double(reads_count * read_length[NP]));
-		stat (foN.file_name, &s); new_size += s.st_size;
-
+		#ifndef PACBIO
+			stat (foR.file_name, &s); new_size += s.st_size;
+			LOG("\tRead bit size:    paired end %d = %.2lf\n", NP, (s.st_size * 8.0) / double(reads_count * read_length[NP]));
+			stat (foQ.file_name, &s); new_size += s.st_size;
+			LOG("\tQuality bit size: paired end %d = %.2lf\n", NP, (s.st_size * 8.0) / double(reads_count * read_length[NP]));
+			stat (foN.file_name, &s); new_size += s.st_size;
+		#else 
+			stat (foR.file_name, &s); new_size += s.st_size;
+			LOG("\tRead bit size:    paired end %d = %.2lf\n", NP, (s.st_size * 8.0) / double(character_count[NP]));
+			stat (foQ.file_name, &s); new_size += s.st_size;
+			LOG("\tQuality bit size: paired end %d = %.2lf\n", NP, (s.st_size * 8.0) / double(character_count[NP]));
+			stat (foN.file_name, &s); new_size += s.st_size;
+			stat (foL.file_name, &s); new_size += s.st_size;
+		#endif
 
 		if (_use_second_file && !NP) {
 			fR = file_pool + 4;
 			fQ = file_pool + 5;
 			f_seek (fN, 0);
 			f_seek (fM, 0);
+			#ifdef PACBIO
+				f_seek (fL, 0);
+			#endif
 		}
 	}
 
@@ -350,11 +437,23 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 	f_free (&foQ);
 	f_free (&foN);
 	f_free (&foR);
+	#ifdef PACBIO
+		f_free (&foL);
+	{
+		int i = 6;
+		snprintf(buffer, MAXLINE, "%s/t_%03d_%d.tmp", _temp_directory, fl, i);
+		f_close (file_pool + i);
+		unlink (buffer);
+	}
+	#endif
+
 	for (int i = 0; i <= 3 + 2 * (_use_second_file); i++) { 
 		snprintf(buffer, MAXLINE, "%s/t_%03d_%d.tmp", _temp_directory, fl, i);
 		f_close (file_pool + i);
 		unlink (buffer);
 	}
+
+
 	if (!_no_ac) 
 		ac_finish();
 
@@ -365,13 +464,26 @@ int64_t combine_and_compress_with_split (int fl, const char *output, int64_t spl
 void merge (int total) {
 	char buffer[MAXLINE], buffer2[MAXLINE];
 	int mm;
-	for (int f = 0; f < 4 + _use_second_file * 2; f++) if (f != 3) {
+
+	int nf = 4 + (_use_second_file * 2);
+	for (int f = 0; f < nf; f++) if (f != 3) {
 		mm = merhamet_merge (total, f);
 		snprintf (buffer, MAXLINE, "%s/t_TMP_%d.tmp",  _temp_directory, f);
 		snprintf (buffer2, MAXLINE, "%s/t_%03d_%d.tmp", _temp_directory, total, f);
 		unlink(buffer2);
 		rename(buffer,buffer2);
 	}
+	#ifdef PACBIO
+	{
+		int f = 6;
+		mm = merhamet_merge (total, f);
+		snprintf (buffer, MAXLINE, "%s/t_TMP_%d.tmp",  _temp_directory, f);
+		snprintf (buffer2, MAXLINE, "%s/t_%03d_%d.tmp", _temp_directory, total, f);
+		unlink(buffer2);
+		rename(buffer,buffer2);
+	}
+	#endif
+
 	for (int i = 0; i < total; i++) {
 		snprintf(buffer, MAXLINE, "%s/t_%03d_%d.tmp", _temp_directory, i, 3); 
 		unlink(buffer);
@@ -387,15 +499,30 @@ void merge (int total) {
 void dump_trie (int fl, aho_trie *t) {
 	char buffer[MAXLINE];
 
-	buffered_file file_pool[6];
-	for (int i = 0; i < 4 + (_use_second_file * 2); i++) {
+	int nf = 4 + (_use_second_file * 2);
+	buffered_file file_pool[7];
+	for (int i = 0; i < nf; i++) {
 		snprintf(buffer, MAXLINE, "%s/t_%03d_%d.tmp", _temp_directory, fl, i);
 		f_init (&file_pool[i], IO_SYS);
 		f_open (&file_pool[i], buffer, IO_WRITE);	
 	}
+	#ifdef PACBIO
+	{ // length file
+		int i = 6;
+		snprintf(buffer, MAXLINE, "%s/t_%03d_%d.tmp", _temp_directory, fl, i);
+		f_init (&file_pool[i], IO_SYS);
+		f_open (&file_pool[i], buffer, IO_WRITE);	
+	}
+	#endif
+
 	aho_output (t, file_pool);
-	for (int i = 0; i < 4 + (_use_second_file * 2); i++) 
+	for (int i = 0; i < nf; i++) 
 		f_close (file_pool + i);
+
+	#ifdef PACBIO
+		f_close (file_pool + 6);
+	#endif
+
 	LOG("\tCreated temp file %d\n", fl);
 }
 
@@ -464,30 +591,45 @@ void *thread (void *vt) {
 			return 0;
 		}
 		f_gets(input, read, MAXLINE);
-		int l = strlen(read); 
+		int32_t l = strlen(read), l2 = 0; 
 
 		if (!l || read[0] == '\n') { fprintf(stderr,"Whooops... %s is empty, skipping it!\n", name); pthread_spin_unlock(&r_spin); continue; } 
-		if (!xlen1) xlen1 = l; 
-		else if (l != xlen1) { fprintf(stderr,"Whooops... read names in /1 do not match (%d vs %d)!\n", xlen1-1, l-1); exit(1); }
+		#ifndef PACBIO
+			if (!xlen1) xlen1 = l; 
+			else if (l != xlen1) { fprintf(stderr,"Whooops... read names in /1 do not match (%d vs %d)!\n", xlen1-1, l-1); exit(1); }
+		#endif
 
-		f_gets(input, qual, MAXLINE);
-		f_gets(input, qual, MAXLINE);
+		if (!_is_fasta) {
+			f_gets(input, qual, MAXLINE);
+			f_gets(input, qual, MAXLINE);
+		}
 		buffered_file *fn = (_interleave ? input : (_use_second_file ? input + 1 : 0));
 		if (fn) {
 			f_gets(fn, read2, MAXLINE);
 			f_gets(fn, read2, MAXLINE);
-			l = strlen(read2); 
+			l2 = strlen(read2); 
 			if (!l || read2[0] == '\n') { fprintf(stderr,"Whooops... %s is empty, skipping it!\n", name);  pthread_spin_unlock(&r_spin);continue; } 
-			if (!xlen2) xlen2 = l;
-			else if (l != xlen2) { fprintf(stderr,"Whooops... read names in /2 do not match (%d vs %d)!\n", xlen2-1, l-1); exit(1); }
-			f_gets(fn, qual2, MAXLINE);
-			f_gets(fn, qual2, MAXLINE);
+			#ifndef PACBIO
+				if (!xlen2) xlen2 = l2;
+				else if (l2 != xlen2) { fprintf(stderr,"Whooops... read names in /2 do not match (%d vs %d)!\n", xlen2-1, l2-1); exit(1); }
+			#endif
+			if (!_is_fasta) {
+				f_gets(fn, qual2, MAXLINE);
+				f_gets(fn, qual2, MAXLINE);
+			}
 		}	
+		#ifdef PACBIO
+			character_count[0] += l-1;
+			character_count[1] += l2-1;
+		#endif
 		pthread_spin_unlock(&r_spin);
 
 		int n = aho_search(read, trie, &bucket);
 		
 		rd.sz = output_name(name, rd.data);
+		#ifdef PACBIO
+			rd.read_length = l;
+		#endif
 		if (n != -1) {
 			rd.sz += output_read(read, rd.data + rd.sz, n - bucket->level + 1, bucket->level);
 			rd.end = n + 1;
@@ -496,12 +638,15 @@ void *thread (void *vt) {
 			rd.sz += output_read(read, rd.data + rd.sz, 0, 0);
 			rd.end = 0;
 		}
-		
+
 		pthread_spin_lock(&w_spin);
 		if (_compress_qualities)
 			rd.sz += output_quality(qual, read, qmap + 0, rd.data + rd.sz, 0);
 		rd.of = rd.sz;
 		if (_use_second_file || _interleave) {
+			#ifdef PACBIO
+				rd.read_length_2 = l2;
+			#endif
 			rd.sz += output_read(read2, rd.data + rd.sz, 0, 0);
 			if (_compress_qualities)
 				rd.sz += output_quality(qual2, read2, qmap + 1, rd.data + rd.sz, 1);
@@ -530,6 +675,7 @@ void *thread (void *vt) {
 void compress (char **files, int nf, const char *output, const char *pattern_path) {
 	char line[MAXLINE], read[2][MAXLINE];
 
+	character_count[0] = character_count[1] = 0;
 
 	LOG("Buffer size: %lldK, bucket storage size: %lldK\n", _file_buffer_size/1024, _max_bucket_set_size/1024);
 
@@ -629,9 +775,11 @@ void compress (char **files, int nf, const char *output, const char *pattern_pat
 	/* print useful stats */
 	LOG("Statistics:\n");
 	LOG("\tTotal number of reads: %lld\n", reads_count);
-	LOG("\tRead length: first end %d\n", read_length[0]);
-	if (_use_second_file) 
-		LOG("\t             second end %d\n", read_length[1]);
+	#ifndef PACBIO
+		LOG("\tRead length: first end %d\n", read_length[0]);
+		if (_use_second_file) 
+			LOG("\t             second end %d\n", read_length[1]);
+	#endif
 	LOG("\tUnbucketed reads count: %d, bucketed percentage %.2lf\n", unbuck(), 100.0 * ((double)(reads_count - unbuck()) / reads_count));
 	LOG("\tLossy percentage: %d\n", _quality_lossy_percentage);
 	_time_elapsed = (TIME-_time_elapsed)/1000000;

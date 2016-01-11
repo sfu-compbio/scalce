@@ -47,6 +47,7 @@ typedef struct {
 	int32_t sz;      /* size of data */
 	int32_t of;      /* offset in data for paired read */
 	int16_t end;     /* end marker */
+	int32_t read_length, read_length_2;
 } read_data;
 
 /* bin_node - linked list node for read_data */

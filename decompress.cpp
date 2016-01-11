@@ -38,6 +38,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
+ #include <errno.h>
 
 #include "buffio.h"
 #include "const.h"
@@ -46,9 +47,27 @@
 #include "reads.h"
 #include "names.h"
 
+static const char *last_strstr(const char *haystack, const char *needle)
+{
+	if (*needle == '\0')
+		return (char *) haystack;
+
+	const char *result = NULL;
+	for (;;) {
+		const char *p = strstr(haystack, needle);
+		if (p == NULL)
+			break;
+		result = p;
+		haystack = p + 1;
+	}
+
+	return result;
+}
+
+
 void get_file_name (char *name, char c) {
 	char *p;
-	if (p = strstr (name, ".scalce")) {
+	if (p = (char*)last_strstr ((const char*)name, ".scalce")) {
 		*(p + 7) = c;
 	}
 }
@@ -66,7 +85,7 @@ void decompress (const char *path, const char *out) {
 
 	int mode[2] = { IO_SYS, IO_SYS }; uint8_t c[2];
 
-	buffered_file fR[2], fQ[2], fN[2];
+	buffered_file fR[2], fQ[2], fN[2], fL[2];
 
 	LOG("using %d threads...\n", _thread_count);
 	strncpy ((char*)buffer, (char*)path, MAXLINE);
@@ -74,6 +93,10 @@ void decompress (const char *path, const char *out) {
 		/* file type detection */
 		get_file_name ((char*)buffer, 'r');          
 		FILE *ft = fopen ((char*)buffer, "rb");
+		if (!ft) {
+			LOG("Cannot open file %s (error code %d)\n", buffer, errno);
+			exit(errno);
+		}
 		fread (c, 1, 2, ft);
 		int mode = IO_SYS;
 		if (c[0] == 0x1f && c[1] == 0x8b) {
@@ -95,10 +118,18 @@ void decompress (const char *path, const char *out) {
 		f_open (fR + i, (char*)buffer, IO_READ);
 		if (!f_alive (fR + i)) 
 			ERROR("Cannot find read file %s!\n", buffer);
-				get_file_name ((char*)buffer, 'n');
+		get_file_name ((char*)buffer, 'n');
 		f_open (fN + i, (char*)buffer, IO_READ);
 		if (!f_alive (fN + i) && _use_names) 
 			ERROR("Cannot find name file %s! Use -n parameter if you want to skip name file lookup.\n", buffer);
+
+		#ifdef PACBIO
+			f_init (fL + i, mode);
+			get_file_name ((char*)buffer, 'l');
+			f_open (fL + i, (char*)buffer, IO_READ);
+			if (!f_alive (fL + i)) 
+				ERROR("Cannot find name file %s!\n", buffer);
+		#endif
 
 		/* read magic */
 		f_read (fR+i, buffer2, 8);
@@ -193,11 +224,14 @@ void decompress (const char *path, const char *out) {
 
 	int sz_meta = 1;
 	if (len[0] > 255) sz_meta = 2;
-	int read_next_read_info = 0;
+	#ifdef PACBIO
+		sz_meta = 4;
+	#endif
+	int64_t read_next_read_info = 0;
 
 
 	for (int F = 0; F < 1 + (_interleave|_use_second_file); F++) {
-		int reads_so_far = 0, files_so_far = 1;
+		int64_t reads_so_far = 0, files_so_far = 1;
 
 		int32_t core, corlen;
 		uint32_t n_id = 0, n_lane = 0, n_i, n_l, n_x, n_y;
@@ -259,6 +293,16 @@ void decompress (const char *path, const char *out) {
 
 
 			/* quals */
+
+
+			uint32_t lenOfRd = len[F];
+			#ifdef PACBIO
+				if (F) f_read(fL + F, &lenOfRd, sizeof(uint32_t));
+				f_read(fL, &lenOfRd, sizeof(uint32_t));
+				bc[F] = SZ_QUAL(lenOfRd);
+			//	LOG("%d %d %d\n", lenOfRd, bc[F], F);
+			#endif
+
 			if (_compress_qualities) {
 				if (!_no_ac)
 					ac_read(fQ + F, buffer, bc[F]);
@@ -268,51 +312,59 @@ void decompress (const char *path, const char *out) {
 
 			/* reads */
 			int64_t end = 0;
-			int r = f_read (fR+F, o, SZ_READ(len[F]-corlen));
+			int r = f_read (fR+F, o, SZ_READ(lenOfRd-corlen));
 			int lc = 0;
 			if (!F) {
 				f_read(fR+F, &end, sz_meta);
 				assert (end != 0 || corlen == 0);
 				if (end) {
-					for (int i = len[F] - end; i < len[F] - corlen; i++) 
+					for (int i = lenOfRd - end; i < lenOfRd - corlen; i++) 
 						l[lc++] = alphabet[ o[i >> 2] >> ((~i & 3) << 1) & 3 ];
 					for (int i = 0; i < corlen; i++) 
 						l[lc++] = patterns[core][i];
 				}
 			}
-			for (int i = 0; i < len[F] - end; i++) 
+			for (int i = 0; i < lenOfRd - end; i++) 
 				l[lc++] = alphabet[ o[i >> 2] >> ((~i & 3) << 1) & 3 ];
 
 			if (_compress_qualities)
-				for(int i = 0; i < len[F]; i++) {
+				for(int i = 0; i < lenOfRd; i++) {
+					#ifndef PACBIO
 					if (!buffer[i]) l[i] = 'N';
+					#endif
 					buffer[i] += phredOff[F];
 				}
 
-			l[len[F]] = '\n';
-			f_write(pfo[F],l,len[F]+1);
+			l[lenOfRd] = '\n';
+			f_write(pfo[F],l,lenOfRd+1);
 			if (_compress_qualities) {
 				char cx;
 				cx = '+';  f_write(pfo[F], &cx, 1);
 				cx = '\n'; f_write(pfo[F], &cx, 1);
-				buffer[len[F]] = '\n';
-				f_write(pfo[F],buffer,len[F]+1);
+				buffer[lenOfRd] = '\n';
+				f_write(pfo[F],buffer,lenOfRd+1);
 			}
 			nameidx++;
 			reads_so_far++;
 		}
-		LOG("Created part %d/%d as %s with %d reads\n", files_so_far, F+1, pfo[F]->file_name, reads_so_far);
+		LOG("Created part %d/%d as %s with %lld reads\n", files_so_far, F+1, pfo[F]->file_name, reads_so_far);
 	}
 //	int lR = (_split_reads? _split_reads-limit : nl[0]-limit);
 
 	f_free(fR);
 	f_free(fQ);
 	f_free(fN);
+	#ifdef PACBIO 
+	f_free(fL);
+	#endif
 	f_free(fo);
 	if (_interleave|_use_second_file) {
 		f_free(fR+1);
 		f_free(fN+1);
 		f_free(fQ+1);
+		#ifdef PACBIO 
+		f_free(fL+1);
+		#endif
 	}
 	if(_use_second_file)
 		f_free(fo+1);

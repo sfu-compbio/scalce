@@ -56,6 +56,7 @@
 int       _quality_sample_lines     = 100000;
 int       _quality_lossy_percentage = 0;
 char      _use_second_file          = 0;
+char 	  _is_fasta = 0;
 char      _use_names						= 1;
 uint64_t	 _file_buffer_size         = 128 * 1024 * 1024;
 uint64_t  _max_bucket_set_size      = 4LL * 1024LL * 1024LL * 1024LL;
@@ -157,6 +158,10 @@ int main (int argc, char **argv) {
 	_thread_count = MIN(4, sysconf( _SC_NPROCESSORS_ONLN ) - 1);
 
 	LOG("SCALCE %s [pthreads; available cores=%d]\n", SCALCE_VERSION, _thread_count+1);
+	#ifdef PACBIO
+		LOG("!! This is (very) experimental version which (supposedly) supports variable length long reads !!\n");
+		LOG("!! If using Illumina, compile without -DPACBIO -- faster and safer !!\n");
+	#endif
 	if (_thread_count > 1) 
 		_compression_mode = IO_PGZIP;
 	else
@@ -179,13 +184,14 @@ int main (int argc, char **argv) {
 		{ "paired-end",        0, NULL, 'r' },
 		{ "skip-names",        1, NULL, 'n' },
 		{ "split-reads",       1, NULL, 'S' },
+		{ "fasta",				0, NULL, 'f' },
 		{ "threads",           1, NULL, 'T' },
 		{ "version",		     0, NULL, 'v' },
 		{ "no-arithmetic",     0, NULL, 'A' },
 		{ NULL,                0, NULL,  0  }
 	};
 	do {
-		opt = getopt_long (argc, argv, "vhp:T:dc:o:s:t:B:rQAn:P:S:"/*"i"*/, long_opt, NULL);
+		opt = getopt_long (argc, argv, "vhp:T:dc:o:fs:t:B:rQAn:P:S:"/*"i"*/, long_opt, NULL);
 		switch (opt) {
 			case 'v':
 			//	LOG("%s\n",SCALCE_VERSION);
@@ -193,8 +199,12 @@ int main (int argc, char **argv) {
 			case 'h':
 				help ();
 				break;
-			case 'a':
+			case 'A':
 				_no_ac = 1;
+				break;
+			case 'f':
+				_is_fasta = 1;
+				_compress_qualities = 0;
 				break;
 		//	case 'i':
 		//		_interleave = 1;

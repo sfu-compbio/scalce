@@ -51,6 +51,8 @@ int64_t _TIME_();
 
 #define GLOBALBUFSZ  5*MAXLINE
 #define MIN(x,y)  (((x)<(y))?(x):(y))
+#define MAX(x,y)  (((x)>(y))?(x):(y))
+
 #define TIME	(_TIME_())
 #define SZ_READ(l)\
 	(((l) / 4) + ((l) % 4 > 0))
@@ -71,7 +73,12 @@ int64_t _TIME_();
 
 
 // Max. characters per line
-#define MAXLINE 		2500
+#ifdef PACBIO
+	#define MAXLINE 	100000
+#else
+	#define MAXLINE 	2500
+#endif
+	
 // Max. files in file pool
 #define MAXOPENFILES 20
 // Max. concurrent files for merging
@@ -97,7 +104,7 @@ extern int       _compression_mode;
 extern int       _thread_count;
 extern char      _interleave;
 extern int       _decompress;
-
+extern char      _is_fasta;
 extern int       _no_ac ;
 extern int     _compress_qualities;
 extern int32_t read_length[2];                 /* length of read in one fastq file */

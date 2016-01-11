@@ -57,11 +57,14 @@ ac_stat::ac_stat (uint64_t *a3, uint64_t *a4) {
 			acfq3[i*AC_DEPTH + j] = hi_fq[i*AC_DEPTH + j][AC_DEPTH - 1];
 			assert(acfq3[i*AC_DEPTH+j]<((1LL<<32)-1));
 			int p = -1;
+			lo_fq[i*AC_DEPTH + j][0] = 0;
 			for (int l = 0; l < AC_DEPTH; l++) if (acfq4[(i*AC_DEPTH + j)*AC_DEPTH+l]) {
-				if (p != -1) 
+				if (p != -1) {
 					lo_fq[i*AC_DEPTH + j][l] = hi_fq[i*AC_DEPTH + j][p];
+					assert(lo_fq[i*AC_DEPTH + j][l] <= hi_fq[i*AC_DEPTH + j][l]);
+				}
 				p = l;
-			}
+			}	
 		}
 	}
 }
@@ -86,6 +89,7 @@ void ac_coder::O (int t) {
 	*ou <<= 1;
 	if (t) *ou |= 1;
 	if (buf_pos == 0) {
+		//printf("W> %lu\n", *ou);
 		ou++;
 		assert(ou-os < buffer_size);
 		buf_pos = 7;
@@ -101,6 +105,8 @@ void ac_coder::write (uint8_t *arr, int sz) {
 		*ou = arr[1]; ou++;
 		prev[0] = arr[0];
 		prev[1] = arr[1];
+		assert(arr[0] < AC_DEPTH);
+		assert(arr[1] < AC_DEPTH);
 		i = 2;
 	}
 	for (; i < sz; i++) {
@@ -108,9 +114,12 @@ void ac_coder::write (uint8_t *arr, int sz) {
 					c_hi = as->hi_fq[prev[0]*AC_DEPTH + prev[1]][arr[i]],
 					p_sz = as->acfq3[prev[0]*AC_DEPTH + prev[1]];
 		uint64_t range = hi - lo + 1LL;
+		
+		//printf("%u %u %u | %d %d [%d] %u %u %u ... %u \n", range, hi, lo, prev[0], prev[1], arr[i], c_lo, c_hi, p_sz,
+		//	as->acfq4[(prev[0]*AC_DEPTH + prev[1]) * AC_DEPTH+arr[i]]);
+
 		hi = lo + (range * c_hi) / p_sz - 1;
 		lo = lo + (range * c_lo) / p_sz;
-
 		while (1) {
 			if ((hi & 0x80000000) == (lo & 0x80000000)) {
 				O (hi & 0x80000000);
@@ -132,6 +141,7 @@ void ac_coder::write (uint8_t *arr, int sz) {
 
 		prev[0] = prev[1];
 		prev[1] = arr[i];
+		assert(arr[i] < AC_DEPTH);
 	}
 }
 
@@ -158,6 +168,7 @@ uint8_t ac_decoder::I() {
 	uint8_t c = ((*in) >> buf_pos) & 1;
 	if (!buf_pos) {
 		in++;
+		//printf("W> %lu\n", *in);
 		assert(in-is < buffer_size);
 		buf_pos = 7;
 	}
@@ -175,7 +186,7 @@ void ac_decoder::reset() {
 uint8_t ac_decoder::read_single() {
 	uint8_t c = 0;
 	uint64_t range = hi - lo + 1LL;
-	uint32_t count = ((code - lo + 1LL) * as->acfq3[prev[0]*AC_DEPTH + prev[1]] - 1LL) / range;
+	uint32_t count = (int64_t(code - lo + 1LL) * as->acfq3[prev[0]*AC_DEPTH + prev[1]] - 1LL) / range;
 
 	uint32_t i;
 	for (i = 0; i < AC_DEPTH; i++) 
@@ -183,6 +194,9 @@ uint8_t ac_decoder::read_single() {
 				&& count >= as->lo_fq[prev[0]*AC_DEPTH + prev[1]][i] 
 				&& count <  as->hi_fq[prev[0]*AC_DEPTH + prev[1]][i]) 
 			break;
+	//printf("%d %d %d %d %d | %d %d\n", range, count, hi, lo, code, prev[0], prev[1]);
+	//printf("%u %u %u | %d %d [%d] %u %u %u\n", range, hi, lo, prev[0], prev[1], i,as->lo_fq[prev[0]*AC_DEPTH + prev[1]][i] ,as->hi_fq[prev[0]*AC_DEPTH + prev[1]][i] , as->acfq3[prev[0]*AC_DEPTH + prev[1]] );
+
 	assert(i<AC_DEPTH);
 
 	hi = lo + (range * as->hi_fq[prev[0]*AC_DEPTH + prev[1]][i]) / as->acfq3[prev[0]*AC_DEPTH + prev[1]] - 1;

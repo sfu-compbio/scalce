@@ -85,15 +85,23 @@ void bin_free (bin *b) {
  * f must contain 5 pointers, for names, reads and qualities files
  * (and reads and qualities for paired end) */
 void bin_dump (aho_trie *t, buffered_file *f) {
-	int64_t tN = 0, tQ = 0, tR = 0, tR2 = 0, tQ2 = 0;
-	int64_t nN = 0, nR = 0, nQ = 0, nR2 = 0, nQ2 = 0;
-	
-	int sz_read;
-	if (t->output >= 0) sz_read = SZ_READ( read_length[0] - strlen(patterns[t->output]) );
-	else sz_read = SZ_READ (read_length[0]);
+	int64_t tN = 0, tQ = 0, tR = 0, tR2 = 0, tQ2 = 0, tL = 0;
+	int64_t nN = 0, nR = 0, nQ = 0, nR2 = 0, nQ2 = 0, nL = 0;
+
+	size_t lenCore = 0;
+	if (t->output >= 0) lenCore = strlen(patterns[t->output]);
+	#ifndef PACBIO
+		int sz_read;
+		if (t->output >= 0) sz_read = SZ_READ( read_length[0] - lenCore );
+		else sz_read = SZ_READ (read_length[0]);
+	#endif
 
 	int sz_meta = 1;
 	if (read_length[0] > 255) sz_meta = 2;
+
+	#ifdef PACBIO
+	sz_meta = 4;
+	#endif
 
 	for (bin_node *n = t->bin.first; n; n = n->next) {
 		read_data *r = &(n->data);
@@ -101,6 +109,12 @@ void bin_dump (aho_trie *t, buffered_file *f) {
 			nN = f_write (f + 0, r->data, r->data[0] + 1);
 		else
 			nN = 1;
+
+		#ifdef PACBIO
+			size_t sz_read;
+			if (t->output >= 0) sz_read = SZ_READ( r->read_length - lenCore );
+			else sz_read = SZ_READ (r->read_length);
+		#endif
 		nR = f_write (f + 1, r->data + nN, sz_read);
 		// write the end marker
 		f_write(f+1, &(r->end), sz_meta);
@@ -108,15 +122,29 @@ void bin_dump (aho_trie *t, buffered_file *f) {
 		nQ = f_write (f + 2, r->data + nN + nR, r->of - nN - nR);
 
 		if (_use_second_file) {
-			nR2 = f_write (f + 4, r->data + r->of, SZ_READ (read_length[1]));
+			#ifdef PACBIO
+				sz_read = SZ_READ (r->read_length_2);
+				nR2 = f_write (f + 4, r->data + r->of, sz_read);
+			#else
+				nR2 = f_write (f + 4, r->data + r->of, SZ_READ(read_length[1]));
+			#endif
 			nQ2 = f_write (f + 5, r->data + r->of + nR2, r->sz - (r->of + nR2));
 		}
+
+		#ifdef PACBIO
+			nL = f_write(f + 6, &r->read_length, sizeof(uint32_t));
+			if (_use_second_file)
+				nL += f_write(f + 6, &r->read_length_2, sizeof(uint32_t));
+			tL += nL;
+		#endif
+
 		if (_use_names)
 			tN += nN; 
 		tQ += nQ; tR += nR + sz_meta; tR2 += nR2; tQ2 += nQ2;
 	}
 	bin_free (&(t->bin));
 	
+	// META
 	if (t->output == -1) {
 		int32_t x = MAXBIN - 1;
 		f_write (f + 3, &x, sizeof(int32_t)); // which core
@@ -134,6 +162,9 @@ void bin_dump (aho_trie *t, buffered_file *f) {
 		f_write (f + 3, &tR2, sizeof(int64_t));
 		f_write (f + 3, &tQ2, sizeof(int64_t));
 	}
+	#ifdef PACBIO
+		f_write (f + 3, &tL, sizeof(int64_t));
+	#endif
 }
 
 /* trie_queue - simple queue for aho_trie (for bfs traversal) */
@@ -500,8 +531,13 @@ void aho_trie_free (aho_trie *t) {
 	(( (n[x]->data.data[ n[x]->data.data[0] + 1 + ((i) / 4)]) >> ((3 - ((i) % 4)) * 2) ) & 3)*/
 #define _POSX(n,x,i) \
 	(( (n[x]->data.data[ n[x]->data.data[0] + 1 + ((i) / 4)]) >> ((3 - ((i) % 4)) * 2) ) & 3)
+#ifdef PACBIO
+#define _POS(n,x,i) \
+	((i + n[x]->data.end < n[x]->data.read_length) ? _POSX(n,x,i) : 0)   // n,x,iarray, pos in array, pos in item
+#else
 #define _POS(n,x,i) \
 	((i + n[x]->data.end < read_length[0]) ? _POSX(n,x,i) : 0)
+#endif
 
 bin_node **_nodes = 0,
 			**_temp  = 0;
@@ -560,9 +596,17 @@ void bin_prepare (aho_trie *t) {
 		_allocd=b->size;
 	}
 	_bin_sz = 0;
-	for (bin_node *n = b->first; n; n = n->next) 
+
+	_limit = 0;
+	for (bin_node *n = b->first; n; n = n->next) {
 		_nodes[_bin_sz++] = n;
-	_limit=read_length[0] - t->level;
+		#ifdef PACBIO
+			_limit = MAX(_limit, n->data.read_length - t->level);
+		#endif
+	}
+	#ifndef PACBIO
+		_limit=read_length[0] - t->level;
+	#endif
 	_radix_sort (0, 0, _bin_sz);
 	
 	b->first = _nodes[0];

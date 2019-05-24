@@ -44,7 +44,7 @@ clean:
 	rm -f *.o scalce
 
 download:
-	curl -L http://www.bzip.org/$(BZIP_VER)/bzip2-$(BZIP_VER).tar.gz | tar zxvf -
+	curl -L http://anduin.linuxfromscratch.org/LFS/bzip2-$(BZIP_VER).tar.gz | tar zxvf -
 	curl -L http://zlib.net/zlib-$(ZLIB_VER).tar.gz | tar zxvf -
 
 zlib:

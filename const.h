@@ -69,7 +69,7 @@ int64_t _TIME_();
 #define DLOG(c,...) //fprintf(stderr,c,##__VA_ARGS__)
 #endif
 #define ERROR(c,...)\
-	{ fprintf (stderr, "(ERROR) "c, ##__VA_ARGS__); exit (1); }
+	{ fprintf (stderr, "(ERROR) " c, ##__VA_ARGS__); exit (1); }
 
 
 // Max. characters per line

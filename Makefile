@@ -2,7 +2,7 @@
 
 CC=g++
 CFLAGS=-D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE -DSCALCE_VERSION=\"2.8\"
-LDFLAGS=-lm -lpthread 
+LDFLAGS=-lm -lpthread
 
 BZIP_VER=1.0.6
 ZLIB_VER=1.2.11
@@ -15,18 +15,18 @@ EXECUTABLE=scalce
 SOURCES=const.cpp buffio.cpp arithmetic.cpp main.cpp names.cpp qualities.cpp reads.cpp compress.cpp decompress.cpp
 
 all: CFLAGS+= -O3 -DNDEBUG
-all: zlib bzlib $(SOURCES) $(EXECUTABLE) 
+all: zlib bzlib $(SOURCES) $(EXECUTABLE)
 
 debug: CFLAGS+= -g
-debug: $(SOURCES) $(EXECUTABLE) 
+debug: $(SOURCES) $(EXECUTABLE)
 
 pacbio: CFLAGS+=-DPACBIO -O3 -DNDEBUG
 pacbio: $(SOURCES) scalce-pacbio
 
-scalce-pacbio: $(OBJECTS) 
+scalce-pacbio: $(OBJECTS)
 	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 
-$(EXECUTABLE): $(OBJECTS) 
+$(EXECUTABLE): $(OBJECTS)
 	$(CC) $(OBJECTS) $(LDFLAGS) -o $@
 
 .cpp.o:
@@ -39,7 +39,7 @@ patterns.o:
 	ld -r -b binary -o patterns.o patterns.bin
 
 clean:
-	cd zlib-$(ZLIB_VER) && make clean 
+	cd zlib-$(ZLIB_VER) && make clean
 	cd bzip2-$(BZIP_VER) && make clean
 	rm -f *.o scalce
 

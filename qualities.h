@@ -2,18 +2,24 @@
  * Copyright (c) 2011 - 2012, Simon Fraser University
  * All rights reserved.
  *
- * Redistribution and use in source and binary forms, with or without modification, 
+ * Redistribution and use in source and binary forms, with or without
+ * modification,
  * are permitted provided that the following conditions are met:
- *   
- * Redistributions of source code must retain the above copyright notice, this list
+ *
+ * Redistributions of source code must retain the above copyright notice, this
+ * list
  * of conditions and the following disclaimer.
- * - Redistributions in binary form must reproduce the above copyright notice, this
- *   list of conditions and the following disclaimer in the documentation and/or other
+ * - Redistributions in binary form must reproduce the above copyright notice,
+ * this
+ *   list of conditions and the following disclaimer in the documentation and/or
+ * other
  *   materials provided with the distribution.
- * - Neither the name of the Simon Fraser University nor the names of its contributors may be
- *   used to endorse or promote products derived from this software without specific
+ * - Neither the name of the Simon Fraser University nor the names of its
+ * contributors may be
+ *   used to endorse or promote products derived from this software without
+ * specific
  *   prior written permission.
- * 
+ *
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
  * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
  * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
@@ -40,12 +46,13 @@
 
 /* quality_mapping - keeps lossy transformation information for qualities */
 typedef struct {
-	int offset;        /* phred quality offset - 33 or 64 */
-	int values[128];   /* replacement table */
+  int offset;      /* phred quality offset - 33 or 64 */
+  int values[128]; /* replacement table */
 } quality_mapping;
 
-void quality_mapping_init (quality_mapping *q, buffered_file *f, int *read_length); 
-int output_quality (char *line, char *read, quality_mapping *q, uint8_t *dest, int ZZ);
+void quality_mapping_init(quality_mapping *q, buffered_file *f,
+                          int *read_length);
+int output_quality(char *line, char *read, quality_mapping *q, uint8_t *dest,
+                   int ZZ);
 
 #endif // QUALITIES_H__
-
